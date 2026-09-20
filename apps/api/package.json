@@ -6,14 +6,17 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "fastify": "^5.12.5"
+    "fastify": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "@types/node": "^24.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^7.0.0",
+    "vitest": "^3.0.0"
   }
 }
