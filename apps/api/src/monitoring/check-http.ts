@@ -7,20 +7,66 @@ export type HttpCheckResult = {
   errorMessage: string | null;
 };
 
-export async function checkHttp(url: string): Promise<HttpCheckResult> {
+export async function checkHttp(
+  url: string,
+  timeoutMs = 10_000,
+): Promise<HttpCheckResult> {
   const checkedAt = new Date();
   const startedAt = performance.now();
 
-  const response = await fetch(url);
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
 
-  const latencyMs = Math.round(performance.now() - startedAt);
+    const latencyMs = Math.round(performance.now() - startedAt);
 
-  return {
-    healthy: response.ok,
-    statusCode: response.status,
-    latencyMs,
-    checkedAt,
-    errorType: null,
-    errorMessage: null,
-  };
+    if (!response.ok) {
+      return {
+        healthy: false,
+        statusCode: response.status,
+        latencyMs,
+        checkedAt,
+        errorType: "http_error",
+        errorMessage: `HTTP ${response.status}`,
+      };
+    }
+
+    return {
+      healthy: true,
+      statusCode: response.status,
+      latencyMs,
+      checkedAt,
+      errorType: null,
+      errorMessage: null,
+    };
+  } catch (error) {
+    const latencyMs = Math.round(performance.now() - startedAt);
+
+    if (
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError")
+    ) {
+      return {
+        healthy: false,
+        statusCode: null,
+        latencyMs,
+        checkedAt,
+        errorType: "timeout",
+        errorMessage: `Request timed out after ${timeoutMs}ms`,
+      };
+    }
+
+    const message =
+      error instanceof Error ? error.message : "Unknown connection error";
+
+    return {
+      healthy: false,
+      statusCode: null,
+      latencyMs,
+      checkedAt,
+      errorType: "connection_error",
+      errorMessage: message,
+    };
+  }
 }
