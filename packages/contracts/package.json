@@ -1,0 +1,13 @@
+{
+  "name": "@pulse/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.0"
+  }
+}

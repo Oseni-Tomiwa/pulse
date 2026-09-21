@@ -1,9 +1,11 @@
+import type { HealthCheckErrorType } from "@pulse/contracts";
+
 export type HttpCheckResult = {
   healthy: boolean;
   statusCode: number | null;
   latencyMs: number;
   checkedAt: Date;
-  errorType: string | null;
+  errorType: HealthCheckErrorType | null;
   errorMessage: string | null;
 };
 

@@ -168,6 +168,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@pulse/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       fastify:
         specifier: ^5.0.0
         version: 5.12.5
@@ -184,6 +187,12 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.6)(lightningcss@1.33.0)(tsx@4.23.13)
+
+  packages/contracts:
+    devDependencies:
+      typescript:
+        specifier: ^7.0.0
+        version: 7.0.2
 
 packages:
 
