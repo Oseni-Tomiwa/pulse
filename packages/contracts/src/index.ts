@@ -18,16 +18,27 @@ export type Service = {
   id: string;
   projectId: string;
   name: string;
+  createdAt: Date;
+};
+
+export type HttpMonitor = {
+  id: string;
+  serviceId: string;
+  name: string;
+  kind: "http";
   url: string;
-  status: ServiceStatus;
-  checkIntervalMs: number;
+  method: "GET" | "HEAD";
+  intervalMs: number;
   timeoutMs: number;
+  failureThreshold: number;
+  recoveryThreshold: number;
+  enabled: boolean;
   createdAt: Date;
 };
 
 export type HealthCheck = {
   id: string;
-  serviceId: string;
+  monitorId: string;
   healthy: boolean;
   statusCode: number | null;
   latencyMs: number;
@@ -40,7 +51,7 @@ export type IncidentStatus = "open" | "resolved";
 
 export type Incident = {
   id: string;
-  serviceId: string;
+  monitorId: string;
   status: IncidentStatus;
   startedAt: Date;
   resolvedAt: Date | null;
