@@ -1,0 +1,24 @@
+{
+  "name": "@pulse/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "schema:generate": "drizzle-kit generate",
+    "schema:check": "drizzle-kit check",
+    "migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.0",
+    "pg": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.0.0",
+    "drizzle-kit": "^0.31.0",
+    "typescript": "^7.0.0"
+  }
+}
