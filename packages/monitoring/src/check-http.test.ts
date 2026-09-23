@@ -1,48 +1,37 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import Fastify from "fastify";
 import { checkHttp } from "./check-http.js";
 
-const testServer = Fastify();
+const testServer = createServer(async (request, response) => {
+  if (request.url === "/slow") {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  const statusCode = request.url === "/broken" ? 500 : 200;
+  response.writeHead(statusCode, { "content-type": "application/json" });
+  response.end(JSON.stringify({ status: statusCode === 200 ? "ok" : "error" }));
+});
 
 let baseUrl: string;
 
 beforeAll(async () => {
-  testServer.get("/healthy", async () => {
-    return {
-      status: "ok",
-    };
-  });
-
-  testServer.get("/broken", async (_request, reply) => {
-    return reply.status(500).send({
-      status: "error",
+  await new Promise<void>((resolve, reject) => {
+    testServer.once("error", reject);
+    testServer.listen(0, "127.0.0.1", () => {
+      testServer.off("error", reject);
+      resolve();
     });
   });
 
-  testServer.get("/slow", async () => {
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    return {
-      status: "ok",
-    };
-  });
-
-  await testServer.listen({
-    port: 0,
-    host: "127.0.0.1",
-  });
-
-  const address = testServer.server.address();
-
-  if (!address || typeof address === "string") {
-    throw new Error("Could not determine test server address");
-  }
-
+  const address = testServer.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
 afterAll(async () => {
-  await testServer.close();
+  await new Promise<void>((resolve, reject) => {
+    testServer.close((error) => (error ? reject(error) : resolve()));
+  });
 });
 
 describe("checkHttp", () => {

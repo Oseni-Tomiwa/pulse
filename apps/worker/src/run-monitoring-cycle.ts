@@ -1,17 +1,7 @@
-import type { HealthCheckErrorType, HttpMonitor } from "@pulse/contracts";
+import type { HttpMonitor } from "@pulse/contracts";
+import type { MonitorExecutionResult } from "@pulse/monitoring";
 
-export type MonitorExecutionResult = {
-  healthCheck: {
-    healthy: boolean;
-    statusCode: number | null;
-    latencyMs: number;
-    checkedAt: Date;
-    errorType: HealthCheckErrorType | null;
-    errorMessage: string | null;
-  };
-  incidentDecision: "none" | "open" | "resolve";
-  incidentWritten: boolean;
-};
+export type { MonitorExecutionResult } from "@pulse/monitoring";
 
 export type MonitoringCycleDependencies = {
   now(): Date;

@@ -6,18 +6,14 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "start": "node dist/server.js"
   },
   "dependencies": {
-    "@pulse/contracts": "workspace:*",
     "fastify": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^7.0.0",
-    "vitest": "^3.0.0"
+    "typescript": "^7.0.0"
   }
 }

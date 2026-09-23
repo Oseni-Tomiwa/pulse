@@ -168,9 +168,6 @@ importers:
 
   apps/api:
     dependencies:
-      '@pulse/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       fastify:
         specifier: ^5.0.0
         version: 5.12.5
@@ -184,15 +181,15 @@ importers:
       typescript:
         specifier: ^7.0.0
         version: 7.0.2
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.7(@types/node@24.13.6)(lightningcss@1.33.0)(tsx@4.23.13)
 
   apps/worker:
     dependencies:
       '@pulse/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@pulse/monitoring':
+        specifier: workspace:*
+        version: link:../../packages/monitoring
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -231,6 +228,22 @@ importers:
       drizzle-kit:
         specifier: ^0.31.0
         version: 0.31.10
+      typescript:
+        specifier: ^7.0.0
+        version: 7.0.2
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.6)(lightningcss@1.33.0)(tsx@4.23.13)
+
+  packages/monitoring:
+    dependencies:
+      '@pulse/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.6
       typescript:
         specifier: ^7.0.0
         version: 7.0.2
