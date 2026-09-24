@@ -1,26 +1,42 @@
-import Fastify from "fastify";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createDatabase, createProjectRepository } from "@pulse/database";
+import { buildApp } from "./app.js";
 
-const app = Fastify({
-  logger: true,
-});
+export async function startServer(): Promise<void> {
+  const { db, pool } = createDatabase();
+  const app = buildApp(createProjectRepository(db));
+  let shuttingDown = false;
 
-app.get("/health", async () => {
-  return {
-    status: "ok",
-    service: "pulse-api",
+  const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.info({ signal }, "Shutting down Pulse API");
+
+    try {
+      await app.close();
+      await pool.end();
+    } catch (error) {
+      app.log.error(error, "Pulse API shutdown failed");
+      process.exitCode = 1;
+    }
   };
-});
 
-const start = async () => {
+  process.once("SIGINT", () => { void shutdown("SIGINT"); });
+  process.once("SIGTERM", () => { void shutdown("SIGTERM"); });
+
   try {
-    await app.listen({
-      port: 3000,
-      host: "0.0.0.0",
-    });
+    await app.listen({ port: 3000, host: "0.0.0.0" });
   } catch (error) {
     app.log.error(error);
-    process.exit(1);
+    await pool.end();
+    throw error;
   }
-};
+}
 
-start();
+const executablePath = process.argv[1] ? resolve(process.argv[1]) : undefined;
+if (executablePath === fileURLToPath(import.meta.url)) {
+  void startServer().catch(() => {
+    process.exitCode = 1;
+  });
+}

@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createDatabase, type Database } from "./client.js";
 import { requireTestDatabaseUrl } from "./integration-safety.js";
 import { createMonitoringRepository } from "./monitoring-repository.js";
+import { createProjectRepository } from "./project-repository.js";
 import { healthChecks, incidents, monitors, projects, services } from "./schema.js";
 
 let db: Database;
@@ -189,5 +190,42 @@ describe("monitoring repository against PostgreSQL", () => {
       latencyError = caught;
     }
     expect(pgErrorCode(latencyError)).toBe("23514");
+  });
+});
+
+describe("project repository against PostgreSQL", () => {
+  it("creates, lists, and retrieves projects", async () => {
+    const projectRepository = createProjectRepository(db);
+    const createdIds: string[] = [];
+
+    try {
+      const older = await projectRepository.createProject("Repository older project");
+      createdIds.push(older.id);
+      const newer = await projectRepository.createProject("Repository newer project");
+      createdIds.push(newer.id);
+      await db.update(projects)
+        .set({ createdAt: new Date("2026-01-01T12:00:00.000Z") })
+        .where(eq(projects.id, older.id));
+      await db.update(projects)
+        .set({ createdAt: new Date("2026-01-02T12:00:00.000Z") })
+        .where(eq(projects.id, newer.id));
+
+      expect(older).toMatchObject({ name: "Repository older project" });
+      expect(older.id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(older.createdAt).toBeInstanceOf(Date);
+      expect(await projectRepository.getProjectById(older.id)).toMatchObject({
+        id: older.id,
+        name: older.name,
+      });
+      expect(await projectRepository.getProjectById(randomUUID())).toBeNull();
+
+      const listedIds = (await projectRepository.listProjects()).map(({ id }) => id);
+      expect(listedIds).toEqual(expect.arrayContaining([newer.id, older.id]));
+      expect(listedIds.indexOf(newer.id)).toBeLessThan(listedIds.indexOf(older.id));
+    } finally {
+      if (createdIds.length > 0) {
+        await db.delete(projects).where(inArray(projects.id, createdIds));
+      }
+    }
   });
 });
