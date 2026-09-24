@@ -187,6 +187,9 @@ importers:
       '@pulse/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@pulse/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@pulse/monitoring':
         specifier: workspace:*
         version: link:../../packages/monitoring
@@ -194,6 +197,9 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.6
+      tsx:
+        specifier: ^4.0.0
+        version: 4.23.13
       typescript:
         specifier: ^7.0.0
         version: 7.0.2
