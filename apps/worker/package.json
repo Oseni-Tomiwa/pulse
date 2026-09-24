@@ -9,6 +9,7 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
+    "smoke:test": "tsx src/smoke-test.ts",
     "test": "vitest run"
   },
   "dependencies": {
