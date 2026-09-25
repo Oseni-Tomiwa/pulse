@@ -1,5 +1,7 @@
 # Pulse v0.1 Design
 
+> **Historical design:** This document records the original v0.1 direction. Subsequent implementation introduced a separate Monitor entity and other refinements. See the current [PRD](product/PRD.md), [architecture overview](architecture/overview.md), and [data model](architecture/data-model.md) for the repository's present design and implementation status.
+
 ## 1. Purpose
 
 Pulse is a lightweight, self-hosted monitoring and incident-diagnostics platform for software projects and backend services.
