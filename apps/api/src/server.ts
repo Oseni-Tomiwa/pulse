@@ -1,11 +1,18 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDatabase, createProjectRepository } from "@pulse/database";
+import {
+  createDatabase,
+  createProjectRepository,
+  createServiceRepository,
+} from "@pulse/database";
 import { buildApp } from "./app.js";
 
 export async function startServer(): Promise<void> {
   const { db, pool } = createDatabase();
-  const app = buildApp(createProjectRepository(db));
+  const app = buildApp({
+    projects: createProjectRepository(db),
+    services: createServiceRepository(db),
+  });
   let shuttingDown = false;
 
   const shutdown = async (signal: "SIGINT" | "SIGTERM") => {

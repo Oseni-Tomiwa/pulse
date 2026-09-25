@@ -8,6 +8,7 @@ import { createDatabase, type Database } from "./client.js";
 import { requireTestDatabaseUrl } from "./integration-safety.js";
 import { createMonitoringRepository } from "./monitoring-repository.js";
 import { createProjectRepository } from "./project-repository.js";
+import { createServiceRepository } from "./service-repository.js";
 import { healthChecks, incidents, monitors, projects, services } from "./schema.js";
 
 let db: Database;
@@ -225,6 +226,70 @@ describe("project repository against PostgreSQL", () => {
     } finally {
       if (createdIds.length > 0) {
         await db.delete(projects).where(inArray(projects.id, createdIds));
+      }
+    }
+  });
+});
+
+describe("service repository against PostgreSQL", () => {
+  it("creates, retrieves, and lists only services for the requested project", async () => {
+    if (!fixture) throw new Error("Test fixture is not initialized");
+    const projectRepository = createProjectRepository(db);
+    const serviceRepository = createServiceRepository(db);
+    const serviceIds: string[] = [];
+    let otherProjectId: string | undefined;
+
+    try {
+      const otherProject = await projectRepository.createProject("Other service project");
+      otherProjectId = otherProject.id;
+      const older = await serviceRepository.createService(
+        fixture.projectId,
+        "Repository older service",
+      );
+      serviceIds.push(older.id);
+      const newer = await serviceRepository.createService(
+        fixture.projectId,
+        "Repository newer service",
+      );
+      serviceIds.push(newer.id);
+      const foreign = await serviceRepository.createService(
+        otherProject.id,
+        "Repository foreign service",
+      );
+      serviceIds.push(foreign.id);
+
+      await db.update(services)
+        .set({ createdAt: new Date("2026-01-01T12:00:00.000Z") })
+        .where(eq(services.id, older.id));
+      await db.update(services)
+        .set({ createdAt: new Date("2026-01-02T12:00:00.000Z") })
+        .where(eq(services.id, newer.id));
+
+      expect(older).toMatchObject({
+        projectId: fixture.projectId,
+        name: "Repository older service",
+      });
+      expect(older.id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(older.createdAt).toBeInstanceOf(Date);
+      expect(await serviceRepository.getServiceById(older.id)).toMatchObject({
+        id: older.id,
+        projectId: fixture.projectId,
+        name: older.name,
+      });
+      expect(await serviceRepository.getServiceById(randomUUID())).toBeNull();
+
+      const listedIds = (
+        await serviceRepository.listServicesByProjectId(fixture.projectId)
+      ).map(({ id }) => id);
+      expect(listedIds).toEqual(expect.arrayContaining([newer.id, older.id]));
+      expect(listedIds).not.toContain(foreign.id);
+      expect(listedIds.indexOf(newer.id)).toBeLessThan(listedIds.indexOf(older.id));
+    } finally {
+      if (serviceIds.length > 0) {
+        await db.delete(services).where(inArray(services.id, serviceIds));
+      }
+      if (otherProjectId) {
+        await db.delete(projects).where(eq(projects.id, otherProjectId));
       }
     }
   });
