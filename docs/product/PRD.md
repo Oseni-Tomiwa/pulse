@@ -43,6 +43,7 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 
 - Project creation, listing, and retrieval through the HTTP API.
 - Service creation, project-scoped listing, and retrieval through the HTTP API.
+- HTTP Monitor creation, Service-scoped listing, and retrieval through the HTTP API.
 - PostgreSQL persistence for Projects, Services, HTTP Monitors, Health Checks, and Incidents.
 - HTTP checks that record health, status code, latency, time, and error information.
 - Per-Monitor interval, timeout, failure threshold, recovery threshold, and enabled state in persistence.
@@ -54,7 +55,6 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 
 ### Planned for v0.1
 
-- Management API and user flow for creating and viewing HTTP Monitors.
 - Read APIs for Monitor state, Health Check history, and Incident history.
 - Derived current status and uptime calculations.
 - A dashboard for Projects, Services, current health, latency history, and active incidents.

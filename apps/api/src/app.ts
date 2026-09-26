@@ -1,4 +1,5 @@
-import type { Project, Service } from "@pulse/contracts";
+import type { HttpMonitor, Project, Service } from "@pulse/contracts";
+import type { CreateMonitorInput } from "@pulse/database";
 import Fastify, { type FastifyServerOptions } from "fastify";
 
 export type ProjectRepository = {
@@ -13,9 +14,16 @@ export type ServiceRepository = {
   getServiceById(id: string): Promise<Service | null>;
 };
 
+export type MonitorRepository = {
+  createMonitor(input: CreateMonitorInput): Promise<HttpMonitor>;
+  listMonitorsByServiceId(serviceId: string): Promise<HttpMonitor[]>;
+  getMonitorById(id: string): Promise<HttpMonitor | null>;
+};
+
 export type AppRepositories = {
   projects: ProjectRepository;
   services: ServiceRepository;
+  monitors: MonitorRepository;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,7 +40,11 @@ export function buildApp(
   options: FastifyServerOptions = { logger: true },
 ) {
   const app = Fastify(options);
-  const { projects: projectRepository, services: serviceRepository } = repositories;
+  const {
+    projects: projectRepository,
+    services: serviceRepository,
+    monitors: monitorRepository,
+  } = repositories;
 
   app.setErrorHandler((error, request, reply) => {
     if (isClientError(error)) {
@@ -136,6 +148,118 @@ export function buildApp(
       }
 
       return service;
+    },
+  );
+
+  app.post<{ Params: { serviceId: string } }>(
+    "/services/:serviceId/monitors",
+    async (request, reply) => {
+      const { serviceId } = request.params;
+      if (!UUID_PATTERN.test(serviceId)) {
+        return reply.status(400).send({ error: "Invalid service ID" });
+      }
+
+      const body = request.body as Record<string, unknown> | null;
+      if (!body || typeof body.name !== "string" || body.name.trim().length === 0) {
+        return reply.status(400).send({
+          error: "Monitor name must be a non-empty string",
+        });
+      }
+
+      if (typeof body.url !== "string") {
+        return reply.status(400).send({
+          error: "Monitor URL must be a valid HTTP or HTTPS URL",
+        });
+      }
+      const url = body.url.trim();
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          throw new TypeError("Unsupported URL scheme");
+        }
+      } catch {
+        return reply.status(400).send({
+          error: "Monitor URL must be a valid HTTP or HTTPS URL",
+        });
+      }
+
+      if (
+        body.method !== undefined &&
+        body.method !== "GET" &&
+        body.method !== "HEAD"
+      ) {
+        return reply.status(400).send({ error: "Monitor method must be GET or HEAD" });
+      }
+
+      const integerFields = [
+        "intervalMs",
+        "timeoutMs",
+        "failureThreshold",
+        "recoveryThreshold",
+      ] as const;
+      for (const field of integerFields) {
+        const value = body[field];
+        if (
+          value !== undefined &&
+          (!Number.isSafeInteger(value) || (value as number) <= 0)
+        ) {
+          return reply.status(400).send({
+            error: `${field} must be a positive safe integer`,
+          });
+        }
+      }
+
+      if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+        return reply.status(400).send({ error: "Monitor enabled must be a boolean" });
+      }
+
+      if (!await serviceRepository.getServiceById(serviceId)) {
+        return reply.status(404).send({ error: "Service not found" });
+      }
+
+      const input: CreateMonitorInput = {
+        serviceId,
+        name: body.name.trim(),
+        url,
+      };
+      if (body.method !== undefined) input.method = body.method;
+      for (const field of integerFields) {
+        const value = body[field];
+        if (value !== undefined) input[field] = value as number;
+      }
+      if (body.enabled !== undefined) input.enabled = body.enabled;
+
+      const created = await monitorRepository.createMonitor(input);
+      return reply.status(201).send(created);
+    },
+  );
+
+  app.get<{ Params: { serviceId: string } }>(
+    "/services/:serviceId/monitors",
+    async (request, reply) => {
+      const { serviceId } = request.params;
+      if (!UUID_PATTERN.test(serviceId)) {
+        return reply.status(400).send({ error: "Invalid service ID" });
+      }
+      if (!await serviceRepository.getServiceById(serviceId)) {
+        return reply.status(404).send({ error: "Service not found" });
+      }
+      return monitorRepository.listMonitorsByServiceId(serviceId);
+    },
+  );
+
+  app.get<{ Params: { monitorId: string } }>(
+    "/monitors/:monitorId",
+    async (request, reply) => {
+      const { monitorId } = request.params;
+      if (!UUID_PATTERN.test(monitorId)) {
+        return reply.status(400).send({ error: "Invalid monitor ID" });
+      }
+      const monitor = await monitorRepository.getMonitorById(monitorId);
+      if (!monitor) {
+        return reply.status(404).send({ error: "Monitor not found" });
+      }
+      return monitor;
     },
   );
 

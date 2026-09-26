@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { Project, Service } from "@pulse/contracts";
+import type { HttpMonitor, Project, Service } from "@pulse/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildApp,
   type AppRepositories,
+  type MonitorRepository,
   type ProjectRepository,
   type ServiceRepository,
 } from "./app.js";
@@ -56,13 +57,65 @@ function fakeServiceRepository(initialServices: Service[] = []): ServiceReposito
   };
 }
 
+function monitor(
+  serviceId: string,
+  name: string,
+  overrides: Partial<HttpMonitor> = {},
+): HttpMonitor {
+  return {
+    id: randomUUID(),
+    serviceId,
+    name,
+    kind: "http",
+    url: "https://example.com/health",
+    method: "GET",
+    intervalMs: 60_000,
+    timeoutMs: 10_000,
+    failureThreshold: 3,
+    recoveryThreshold: 1,
+    enabled: true,
+    createdAt: new Date("2026-01-01T12:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function fakeMonitorRepository(initialMonitors: HttpMonitor[] = []): MonitorRepository {
+  const stored = [...initialMonitors];
+  return {
+    async createMonitor(input) {
+      const overrides: Partial<HttpMonitor> = { url: input.url };
+      if (input.method !== undefined) overrides.method = input.method;
+      if (input.intervalMs !== undefined) overrides.intervalMs = input.intervalMs;
+      if (input.timeoutMs !== undefined) overrides.timeoutMs = input.timeoutMs;
+      if (input.failureThreshold !== undefined) {
+        overrides.failureThreshold = input.failureThreshold;
+      }
+      if (input.recoveryThreshold !== undefined) {
+        overrides.recoveryThreshold = input.recoveryThreshold;
+      }
+      if (input.enabled !== undefined) overrides.enabled = input.enabled;
+      const created = monitor(input.serviceId, input.name, overrides);
+      stored.unshift(created);
+      return created;
+    },
+    async listMonitorsByServiceId(serviceId) {
+      return stored.filter((candidate) => candidate.serviceId === serviceId);
+    },
+    async getMonitorById(id) {
+      return stored.find((candidate) => candidate.id === id) ?? null;
+    },
+  };
+}
+
 function repositories(
   initialProjects: Project[] = [],
   initialServices: Service[] = [],
+  initialMonitors: HttpMonitor[] = [],
 ): AppRepositories {
   return {
     projects: fakeProjectRepository(initialProjects),
     services: fakeServiceRepository(initialServices),
+    monitors: fakeMonitorRepository(initialMonitors),
   };
 }
 
@@ -74,6 +127,256 @@ function app(dependencies: AppRepositories = repositories()) {
 
 afterEach(async () => {
   await Promise.all(openApps.splice(0).map((instance) => instance.close()));
+});
+
+describe("monitor routes", () => {
+  it("creates an HTTP monitor with explicit configuration", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const response = await app(repositories([parentProject], [parentService])).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: {
+        name: "Production API",
+        url: "https://example.com/health",
+        method: "HEAD",
+        intervalMs: 30_000,
+        timeoutMs: 5_000,
+        failureThreshold: 2,
+        recoveryThreshold: 2,
+        enabled: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      serviceId: parentService.id,
+      name: "Production API",
+      kind: "http",
+      url: "https://example.com/health",
+      method: "HEAD",
+      intervalMs: 30_000,
+      timeoutMs: 5_000,
+      failureThreshold: 2,
+      recoveryThreshold: 2,
+      enabled: false,
+    });
+  });
+
+  it("uses persistence defaults when optional configuration is omitted", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const response = await app(repositories([parentProject], [parentService])).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: { name: "API health", url: "https://example.com/health" },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      method: "GET",
+      intervalMs: 60_000,
+      timeoutMs: 10_000,
+      failureThreshold: 3,
+      recoveryThreshold: 1,
+      enabled: true,
+    });
+  });
+
+  it("trims the monitor name and URL", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const dependencies = repositories([parentProject], [parentService]);
+    const response = await app(dependencies).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: { name: "  API health  ", url: "  https://example.com/health  " },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect((await dependencies.monitors.listMonitorsByServiceId(parentService.id))[0])
+      .toMatchObject({ name: "API health", url: "https://example.com/health" });
+  });
+
+  it.each(["GET", "HEAD"])("accepts the %s method", async (method) => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const response = await app(repositories([parentProject], [parentService])).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: { name: "API", url: "https://example.com", method },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().method).toBe(method);
+  });
+
+  it.each([undefined, null, 42, { value: "API" }, "   "])(
+    "rejects an invalid monitor name: %j",
+    async (name) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      const response = await app(repositories([parentProject], [parentService])).inject({
+        method: "POST",
+        url: `/services/${parentService.id}/monitors`,
+        payload: { name, url: "https://example.com" },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: "Monitor name must be a non-empty string" });
+    },
+  );
+
+  it.each([
+    ["not a URL", "Monitor URL must be a valid HTTP or HTTPS URL"],
+    ["ftp://example.com/health", "Monitor URL must be a valid HTTP or HTTPS URL"],
+    [42, "Monitor URL must be a valid HTTP or HTTPS URL"],
+  ])("rejects invalid monitor URL %j", async (url, error) => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const response = await app(repositories([parentProject], [parentService])).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: { name: "API", url },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error });
+  });
+
+  it.each(["POST", "get", 42])("rejects invalid monitor method %j", async (method) => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const response = await app(repositories([parentProject], [parentService])).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: { name: "API", url: "https://example.com", method },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Monitor method must be GET or HEAD" });
+  });
+
+  it.each(["intervalMs", "timeoutMs", "failureThreshold", "recoveryThreshold"])(
+    "requires %s to be a positive safe integer when provided",
+    async (field) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1"]) {
+        const response = await app(repositories([parentProject], [parentService])).inject({
+          method: "POST",
+          url: `/services/${parentService.id}/monitors`,
+          payload: { name: "API", url: "https://example.com", [field]: value },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({
+          error: `${field} must be a positive safe integer`,
+        });
+      }
+    },
+  );
+
+  it.each(["true", 1, null])("rejects invalid enabled value %j", async (enabled) => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const response = await app(repositories([parentProject], [parentService])).inject({
+      method: "POST",
+      url: `/services/${parentService.id}/monitors`,
+      payload: { name: "API", url: "https://example.com", enabled },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Monitor enabled must be a boolean" });
+  });
+
+  it("rejects an invalid Service UUID", async () => {
+    const response = await app().inject({
+      method: "POST",
+      url: "/services/not-a-uuid/monitors",
+      payload: { name: "API", url: "https://example.com" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Invalid service ID" });
+  });
+
+  it("returns 404 when creating under an unknown Service", async () => {
+    const response = await app().inject({
+      method: "POST",
+      url: `/services/${randomUUID()}/monitors`,
+      payload: { name: "API", url: "https://example.com" },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Service not found" });
+  });
+
+  it("lists only monitors belonging to the requested Service", async () => {
+    const parentProject = project("Pulse");
+    const requested = service(parentProject.id, "API");
+    const other = service(parentProject.id, "Worker");
+    const newest = monitor(requested.id, "Newest", { createdAt: new Date("2026-01-02T00:00:00Z") });
+    const older = monitor(requested.id, "Older", { createdAt: new Date("2026-01-01T00:00:00Z") });
+    const foreign = monitor(other.id, "Foreign");
+    const response = await app(repositories(
+      [parentProject], [requested, other], [newest, older, foreign],
+    )).inject({ method: "GET", url: `/services/${requested.id}/monitors` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().map(({ name }: { name: string }) => name)).toEqual(["Newest", "Older"]);
+  });
+
+  it("returns 404 when listing monitors for an unknown Service", async () => {
+    const response = await app().inject({
+      method: "GET",
+      url: `/services/${randomUUID()}/monitors`,
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Service not found" });
+  });
+
+  it("retrieves an existing Monitor", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ...existing,
+      createdAt: existing.createdAt.toISOString(),
+    });
+  });
+
+  it("returns 404 for an unknown Monitor", async () => {
+    const response = await app().inject({ method: "GET", url: `/monitors/${randomUUID()}` });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Monitor not found" });
+  });
+
+  it("returns 400 for an invalid Monitor UUID", async () => {
+    const response = await app().inject({ method: "GET", url: "/monitors/not-a-uuid" });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Invalid monitor ID" });
+  });
+
+  it("does not expose Monitor repository errors", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const dependencies = repositories([parentProject], [parentService]);
+    dependencies.monitors.listMonitorsByServiceId = async () => {
+      throw new Error("postgresql://admin:secret@example.invalid/pulse");
+    };
+    const response = await app(dependencies).inject({
+      method: "GET",
+      url: `/services/${parentService.id}/monitors`,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: "Internal Server Error" });
+    expect(response.body).not.toContain("secret");
+  });
 });
 
 describe("project routes", () => {

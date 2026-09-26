@@ -30,7 +30,7 @@ These suites verify:
 - Fastify Project, Service, validation, not-found, error-sanitization, and health behavior through injection.
 - Sequential worker cycles, per-Monitor failure isolation, polling, configuration, and shutdown behavior.
 
-As of this consistency milestone, the repository contains 33 monitoring, 9 database, 30 API, and 26 worker database-free tests: 98 total. These counts are a snapshot and will change as behavior is added.
+As of the Monitor management milestone, the repository contains 33 monitoring, 11 database, 61 API, and 26 worker database-free tests: 131 total. These counts are a snapshot and will change as behavior is added.
 
 ## PostgreSQL integration tests
 
@@ -42,7 +42,7 @@ pnpm --filter @pulse/database test:integration
 
 The suite applies the actual generated Drizzle migration before testing repository behavior. It verifies due-Monitor discovery, Health Check persistence and ordering, Incident uniqueness and resolution, selected database constraints, and Project and Service repositories.
 
-The current suite contains nine integration tests. It has been validated against a Supabase database named `pulse_test`, but the command is deliberately separate from the normal database-free suite.
+The current suite contains ten integration tests. Nine have been validated against a Supabase database named `pulse_test`; the new Monitor-management coverage remains unexecuted. The command is deliberately separate from the normal database-free suite.
 
 ### Safety guard
 

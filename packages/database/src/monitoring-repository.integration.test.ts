@@ -6,6 +6,7 @@ import type { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "./client.js";
 import { requireTestDatabaseUrl } from "./integration-safety.js";
+import { createMonitorRepository } from "./monitor-repository.js";
 import { createMonitoringRepository } from "./monitoring-repository.js";
 import { createProjectRepository } from "./project-repository.js";
 import { createServiceRepository } from "./service-repository.js";
@@ -14,7 +15,13 @@ import { healthChecks, incidents, monitors, projects, services } from "./schema.
 let db: Database;
 let pool: Pool | undefined;
 let repository: ReturnType<typeof createMonitoringRepository>;
-let fixture: { projectId: string; serviceId: string; monitorIds: string[] } | undefined;
+let monitorRepository: ReturnType<typeof createMonitorRepository>;
+let fixture: {
+  projectId: string;
+  serviceId: string;
+  serviceIds: string[];
+  monitorIds: string[];
+} | undefined;
 
 const migrationFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -43,26 +50,27 @@ beforeAll(async () => {
   const testUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
   ({ db, pool } = createDatabase(testUrl));
   repository = createMonitoringRepository(db);
+  monitorRepository = createMonitorRepository(db);
   await migrate(db, { migrationsFolder: migrationFolder });
 }, 60_000);
 
 beforeEach(async () => {
   const projectId = randomUUID();
   const serviceId = randomUUID();
-  fixture = { projectId, serviceId, monitorIds: [] };
+  fixture = { projectId, serviceId, serviceIds: [serviceId], monitorIds: [] };
   await db.insert(projects).values({ id: projectId, name: "Integration project", createdAt: new Date() });
   await db.insert(services).values({ id: serviceId, projectId, name: "Integration service", createdAt: new Date() });
 });
 
 afterEach(async () => {
   if (!fixture) return;
-  const { projectId, serviceId, monitorIds } = fixture;
+  const { projectId, serviceIds, monitorIds } = fixture;
   if (monitorIds.length > 0) {
     await db.delete(healthChecks).where(inArray(healthChecks.monitorId, monitorIds));
     await db.delete(incidents).where(inArray(incidents.monitorId, monitorIds));
     await db.delete(monitors).where(inArray(monitors.id, monitorIds));
   }
-  await db.delete(services).where(eq(services.id, serviceId));
+  await db.delete(services).where(inArray(services.id, serviceIds));
   await db.delete(projects).where(eq(projects.id, projectId));
   fixture = undefined;
 });
@@ -195,6 +203,77 @@ describe("monitoring repository against PostgreSQL", () => {
       latencyError = caught;
     }
     expect(pgErrorCode(latencyError)).toBe("23514");
+  });
+});
+
+describe("monitor management repository against PostgreSQL", () => {
+  it("creates API-compatible monitors that are discoverable by the worker", async () => {
+    if (!fixture) throw new Error("Test fixture is not initialized");
+    const older = await monitorRepository.createMonitor({
+      serviceId: fixture.serviceId,
+      name: "Default monitor",
+      url: "https://example.invalid/default",
+    });
+    fixture.monitorIds.push(older.id);
+    const newer = await monitorRepository.createMonitor({
+      serviceId: fixture.serviceId,
+      name: "Configured monitor",
+      url: "https://example.invalid/configured",
+      method: "HEAD",
+      intervalMs: 30_000,
+      timeoutMs: 5_000,
+      failureThreshold: 2,
+      recoveryThreshold: 2,
+      enabled: true,
+    });
+    fixture.monitorIds.push(newer.id);
+    const otherServiceId = randomUUID();
+    fixture.serviceIds.push(otherServiceId);
+    await db.insert(services).values({
+      id: otherServiceId,
+      projectId: fixture.projectId,
+      name: "Other integration service",
+      createdAt: new Date(),
+    });
+    const foreign = await monitorRepository.createMonitor({
+      serviceId: otherServiceId,
+      name: "Foreign monitor",
+      url: "https://example.invalid/foreign",
+    });
+    fixture.monitorIds.push(foreign.id);
+
+    await db.update(monitors)
+      .set({ createdAt: new Date("2026-01-01T12:00:00.000Z") })
+      .where(eq(monitors.id, older.id));
+    await db.update(monitors)
+      .set({ createdAt: new Date("2026-01-02T12:00:00.000Z") })
+      .where(eq(monitors.id, newer.id));
+
+    expect(older).toMatchObject({
+      kind: "http",
+      method: "GET",
+      intervalMs: 60_000,
+      timeoutMs: 10_000,
+      failureThreshold: 3,
+      recoveryThreshold: 1,
+      enabled: true,
+    });
+    expect(await monitorRepository.getMonitorById(older.id)).toMatchObject({
+      id: older.id,
+      serviceId: fixture.serviceId,
+    });
+    expect(await monitorRepository.getMonitorById(randomUUID())).toBeNull();
+
+    const listedIds = (
+      await monitorRepository.listMonitorsByServiceId(fixture.serviceId)
+    ).map(({ id }) => id);
+    expect(listedIds).toEqual([newer.id, older.id]);
+    expect(listedIds).not.toContain(foreign.id);
+
+    const dueIds = (
+      await repository.getDueHttpMonitors(new Date("2026-01-03T12:00:00.000Z"))
+    ).map(({ id }) => id);
+    expect(dueIds).toEqual(expect.arrayContaining([older.id, newer.id]));
   });
 });
 

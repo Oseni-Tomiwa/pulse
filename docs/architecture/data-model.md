@@ -99,7 +99,7 @@ The current `HttpMonitor` fields are:
 | `enabled` | Required boolean; defaults to `true`. |
 | `createdAt` | Required timestamp with time zone. |
 
-Only HTTP Monitors exist in v0.1. No Monitor management HTTP routes exist yet. HTTP execution passes the configured `GET` or `HEAD` method to the request.
+Only HTTP Monitors exist in v0.1. The management API supports creation, Service-scoped listing, and retrieval by ID. HTTP execution passes the configured `GET` or `HEAD` method to the request.
 
 ## Health Check
 

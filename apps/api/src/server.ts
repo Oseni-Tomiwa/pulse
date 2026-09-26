@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createDatabase,
+  createMonitorRepository,
   createProjectRepository,
   createServiceRepository,
 } from "@pulse/database";
@@ -12,6 +13,7 @@ export async function startServer(): Promise<void> {
   const app = buildApp({
     projects: createProjectRepository(db),
     services: createServiceRepository(db),
+    monitors: createMonitorRepository(db),
   });
   let shuttingDown = false;
 

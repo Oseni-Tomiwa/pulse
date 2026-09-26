@@ -47,7 +47,7 @@ Arrows point from a consumer to its dependencies. `@pulse/monitoring` has no Fas
 
 ## API composition
 
-`buildApp()` accepts Project and Service repository interfaces. Fastify injection tests supply in-memory implementations, so route tests require no database or `DATABASE_URL`.
+`buildApp()` accepts Project, Service, and Monitor repository interfaces. Fastify injection tests supply in-memory implementations, so route tests require no database or `DATABASE_URL`.
 
 The executable `server.ts` creates the PostgreSQL client and concrete repositories only inside `startServer()`. Its direct-execution guard prevents importing the module from starting a server or opening a database connection. `SIGINT` and `SIGTERM` close Fastify and the PostgreSQL pool.
 
@@ -75,7 +75,7 @@ Monitoring behavior is split into three layers:
 
 An HTTP 500, timeout, or connection failure is a successful monitoring execution that produces an unhealthy Health Check. Database and orchestration exceptions remain thrown errors; they are not converted into fake HTTP failures.
 
-The contracts and schema allow `GET` and `HEAD`, but the current `checkHttp()` implementation uses the platform `fetch()` default and therefore issues `GET`. HTTP method selection is not yet wired into execution.
+The contracts and schema allow `GET` and `HEAD`. `executeHttpMonitor()` passes the configured method, URL, and timeout explicitly to `checkHttp()`.
 
 ## Worker runtime
 
