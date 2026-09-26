@@ -99,7 +99,7 @@ The current `HttpMonitor` fields are:
 | `enabled` | Required boolean; defaults to `true`. |
 | `createdAt` | Required timestamp with time zone. |
 
-Only HTTP Monitors exist in v0.1. No Monitor management HTTP routes exist yet. Although `HEAD` is accepted by the contract and database, execution currently performs `GET` requests.
+Only HTTP Monitors exist in v0.1. No Monitor management HTTP routes exist yet. HTTP execution passes the configured `GET` or `HEAD` method to the request.
 
 ## Health Check
 
@@ -118,7 +118,7 @@ A Health Check is an immutable observation produced by running a Monitor.
 
 The monitoring repository reads outcomes newest first using `checkedAt DESC, id DESC`. The identity ID provides deterministic ordering when timestamps are equal. Due-Monitor discovery treats a Monitor as current when a check is newer than `asOf - intervalMs`; otherwise it is due.
 
-The shared `HealthCheck` contract currently declares its ID as a string, while PostgreSQL and the repository use `bigint`. Current monitoring writes omit the contract ID and receive a `bigint` from persistence. This is a known contract/persistence mismatch to resolve before exposing Health Checks through the API.
+PostgreSQL and Drizzle retain the identity as a `bigint` for storage and ordering. At the repository boundary, the ID is converted directly to its decimal string representation, matching the shared `HealthCheck.id` contract. This preserves the full 64-bit value and makes it safe for future JSON responses without coercing it through JavaScript `number`.
 
 Allowed error types are:
 

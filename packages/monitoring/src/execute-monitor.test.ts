@@ -45,7 +45,7 @@ function setup(options: {
 } = {}) {
   const checkHttp = vi.fn().mockResolvedValue(options.checkResult ?? healthyResult);
   const persistence = {
-    insertHealthCheck: vi.fn().mockResolvedValue(41n),
+    insertHealthCheck: vi.fn().mockResolvedValue("41"),
     getRecentCheckOutcomes: vi.fn().mockResolvedValue(options.outcomes ?? [true]),
     getOpenIncident: vi.fn().mockResolvedValue(options.incidentOpen ? { id: "incident-1" } : null),
     openIncident: vi.fn().mockResolvedValue(options.openWritten === false ? null : { id: "incident-1" }),
@@ -59,9 +59,26 @@ describe("executeHttpMonitor", () => {
     const dependencies = setup();
     const result = await executeHttpMonitor(monitor, dependencies);
 
-    expect(dependencies.checkHttp).toHaveBeenCalledWith(monitor.url, monitor.timeoutMs);
+    expect(dependencies.checkHttp).toHaveBeenCalledWith({
+      url: monitor.url,
+      method: monitor.method,
+      timeoutMs: monitor.timeoutMs,
+    });
     expect(dependencies.persistence.insertHealthCheck).toHaveBeenCalledWith({ monitorId: monitor.id, ...healthyResult });
     expect(result).toEqual({ healthCheck: healthyResult, incidentDecision: "none", incidentWritten: false });
+  });
+
+  it("forwards the configured HEAD method to the checker", async () => {
+    const configured = { ...monitor, method: "HEAD" as const };
+    const dependencies = setup();
+
+    await executeHttpMonitor(configured, dependencies);
+
+    expect(dependencies.checkHttp).toHaveBeenCalledWith({
+      url: configured.url,
+      method: "HEAD",
+      timeoutMs: configured.timeoutMs,
+    });
   });
 
   it("persists an unhealthy HTTP result without throwing", async () => {
@@ -116,7 +133,7 @@ describe("executeHttpMonitor", () => {
   it("persists the current check before loading decision inputs", async () => {
     const dependencies = setup({ checkResult: unhealthyResult, outcomes: [false, false, false] });
     const calls: string[] = [];
-    dependencies.persistence.insertHealthCheck.mockImplementation(async () => { calls.push("insert"); return 41n; });
+    dependencies.persistence.insertHealthCheck.mockImplementation(async () => { calls.push("insert"); return "41"; });
     dependencies.persistence.getRecentCheckOutcomes.mockImplementation(async () => { calls.push("outcomes"); return [false, false, false]; });
     dependencies.persistence.getOpenIncident.mockImplementation(async () => { calls.push("incident"); return null; });
 

@@ -1,4 +1,8 @@
-export { checkHttp, type HttpCheckResult } from "./check-http.js";
+export {
+  checkHttp,
+  type HttpCheckOptions,
+  type HttpCheckResult,
+} from "./check-http.js";
 export {
   decideIncidentAction,
   type IncidentAction,

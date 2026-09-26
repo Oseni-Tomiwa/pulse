@@ -40,13 +40,13 @@ export function createMonitoringRepository(db: Database) {
       }));
     },
 
-    async insertHealthCheck(check: NewHealthCheck): Promise<bigint> {
+    async insertHealthCheck(check: NewHealthCheck): Promise<HealthCheck["id"]> {
       const [inserted] = await db
         .insert(healthChecks)
         .values(check)
         .returning({ id: healthChecks.id });
 
-      return inserted.id;
+      return inserted.id.toString();
     },
 
     async getRecentCheckOutcomes(monitorId: string, limit: number): Promise<boolean[]> {

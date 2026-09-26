@@ -113,9 +113,13 @@ describe("monitoring repository against PostgreSQL", () => {
       errorMessage: "HTTP 503",
     });
 
-    const [stored] = await db.select().from(healthChecks).where(eq(healthChecks.id, id));
+    const databaseId = BigInt(id);
+    const [stored] = await db
+      .select()
+      .from(healthChecks)
+      .where(eq(healthChecks.id, databaseId));
     expect(stored).toMatchObject({
-      id, monitorId, healthy: false, statusCode: 503, latencyMs: 42,
+      id: databaseId, monitorId, healthy: false, statusCode: 503, latencyMs: 42,
       checkedAt, errorType: "http_error", errorMessage: "HTTP 503",
     });
   });
@@ -128,7 +132,7 @@ describe("monitoring repository against PostgreSQL", () => {
     const firstId = await repository.insertHealthCheck({ ...base, healthy: true, checkedAt: sharedTime });
     const secondId = await repository.insertHealthCheck({ ...base, healthy: false, checkedAt: sharedTime });
 
-    expect(secondId > firstId).toBe(true);
+    expect(BigInt(secondId) > BigInt(firstId)).toBe(true);
     expect(await repository.getRecentCheckOutcomes(monitorId, 2)).toEqual([false, true]);
     expect(await repository.getRecentCheckOutcomes(monitorId, 3)).toEqual([false, true, false]);
   });

@@ -1,4 +1,10 @@
-import type { HealthCheckErrorType } from "@pulse/contracts";
+import type { HealthCheckErrorType, HttpMonitor } from "@pulse/contracts";
+
+export type HttpCheckOptions = {
+  url: string;
+  method: HttpMonitor["method"];
+  timeoutMs: number;
+};
 
 export type HttpCheckResult = {
   healthy: boolean;
@@ -10,14 +16,14 @@ export type HttpCheckResult = {
 };
 
 export async function checkHttp(
-  url: string,
-  timeoutMs = 10_000,
+  { url, method, timeoutMs }: HttpCheckOptions,
 ): Promise<HttpCheckResult> {
   const checkedAt = new Date();
   const startedAt = performance.now();
 
   try {
     const response = await fetch(url, {
+      method,
       signal: AbortSignal.timeout(timeoutMs),
     });
 

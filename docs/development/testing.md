@@ -30,7 +30,7 @@ These suites verify:
 - Fastify Project, Service, validation, not-found, error-sanitization, and health behavior through injection.
 - Sequential worker cycles, per-Monitor failure isolation, polling, configuration, and shutdown behavior.
 
-At the September 2026 documentation sync, the repository contains 30 monitoring, 8 database, 30 API, and 26 worker database-free tests: 94 total. These counts are a snapshot and will change as behavior is added.
+As of this consistency milestone, the repository contains 33 monitoring, 9 database, 30 API, and 26 worker database-free tests: 98 total. These counts are a snapshot and will change as behavior is added.
 
 ## PostgreSQL integration tests
 

@@ -1,5 +1,5 @@
-import type { HttpMonitor } from "@pulse/contracts";
-import type { HttpCheckResult } from "./check-http.js";
+import type { HealthCheck, HttpMonitor } from "@pulse/contracts";
+import type { HttpCheckOptions, HttpCheckResult } from "./check-http.js";
 import {
   decideIncidentAction,
   type IncidentAction,
@@ -9,7 +9,9 @@ import {
 type IncidentRecord = { id: string };
 
 export type MonitorPersistence = {
-  insertHealthCheck(check: { monitorId: string } & HttpCheckResult): Promise<bigint>;
+  insertHealthCheck(
+    check: { monitorId: string } & HttpCheckResult,
+  ): Promise<HealthCheck["id"]>;
   getRecentCheckOutcomes(monitorId: string, limit: number): Promise<boolean[]>;
   getOpenIncident(monitorId: string): Promise<IncidentRecord | null>;
   openIncident(monitorId: string, startedAt: Date): Promise<IncidentRecord | null>;
@@ -17,7 +19,7 @@ export type MonitorPersistence = {
 };
 
 export type ExecuteHttpMonitorDependencies = {
-  checkHttp(url: string, timeoutMs: number): Promise<HttpCheckResult>;
+  checkHttp(options: HttpCheckOptions): Promise<HttpCheckResult>;
   persistence: MonitorPersistence;
   decideIncident?: (input: IncidentDecisionInput) => IncidentAction;
 };
@@ -36,7 +38,11 @@ export async function executeHttpMonitor(
     decideIncident = decideIncidentAction,
   }: ExecuteHttpMonitorDependencies,
 ): Promise<MonitorExecutionResult> {
-  const healthCheck = await checkHttp(monitor.url, monitor.timeoutMs);
+  const healthCheck = await checkHttp({
+    url: monitor.url,
+    method: monitor.method,
+    timeoutMs: monitor.timeoutMs,
+  });
 
   await persistence.insertHealthCheck({
     monitorId: monitor.id,

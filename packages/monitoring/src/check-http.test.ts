@@ -1,9 +1,13 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { checkHttp } from "./check-http.js";
 
+const receivedMethods: string[] = [];
+
 const testServer = createServer(async (request, response) => {
+  receivedMethods.push(request.method ?? "");
+
   if (request.url === "/slow") {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
@@ -14,6 +18,10 @@ const testServer = createServer(async (request, response) => {
 });
 
 let baseUrl: string;
+
+beforeEach(() => {
+  receivedMethods.length = 0;
+});
 
 beforeAll(async () => {
   await new Promise<void>((resolve, reject) => {
@@ -36,7 +44,11 @@ afterAll(async () => {
 
 describe("checkHttp", () => {
   it("reports a successful HTTP response as healthy", async () => {
-    const result = await checkHttp(`${baseUrl}/healthy`);
+    const result = await checkHttp({
+      url: `${baseUrl}/healthy`,
+      method: "GET",
+      timeoutMs: 10_000,
+    });
 
     expect(result.healthy).toBe(true);
     expect(result.statusCode).toBe(200);
@@ -46,8 +58,32 @@ describe("checkHttp", () => {
     expect(result.errorMessage).toBeNull();
   });
 
+  it("sends GET when configured for GET", async () => {
+    await checkHttp({
+      url: `${baseUrl}/healthy`,
+      method: "GET",
+      timeoutMs: 10_000,
+    });
+
+    expect(receivedMethods).toEqual(["GET"]);
+  });
+
+  it("sends HEAD when configured for HEAD", async () => {
+    await checkHttp({
+      url: `${baseUrl}/healthy`,
+      method: "HEAD",
+      timeoutMs: 10_000,
+    });
+
+    expect(receivedMethods).toEqual(["HEAD"]);
+  });
+
   it("reports an HTTP 500 response as unhealthy", async () => {
-    const result = await checkHttp(`${baseUrl}/broken`);
+    const result = await checkHttp({
+      url: `${baseUrl}/broken`,
+      method: "GET",
+      timeoutMs: 10_000,
+    });
 
     expect(result.healthy).toBe(false);
     expect(result.statusCode).toBe(500);
@@ -56,7 +92,11 @@ describe("checkHttp", () => {
   });
 
   it("reports a connection failure as unhealthy", async () => {
-    const result = await checkHttp("http://127.0.0.1:59999");
+    const result = await checkHttp({
+      url: "http://127.0.0.1:59999",
+      method: "GET",
+      timeoutMs: 10_000,
+    });
 
     expect(result.healthy).toBe(false);
     expect(result.statusCode).toBeNull();
@@ -67,7 +107,11 @@ describe("checkHttp", () => {
   });
 
   it("reports a timeout as unhealthy", async () => {
-    const result = await checkHttp(`${baseUrl}/slow`, 50);
+    const result = await checkHttp({
+      url: `${baseUrl}/slow`,
+      method: "GET",
+      timeoutMs: 50,
+    });
 
     expect(result.healthy).toBe(false);
     expect(result.statusCode).toBeNull();
