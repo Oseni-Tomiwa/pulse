@@ -1,6 +1,6 @@
 # HTTP API
 
-The Fastify API currently exposes health, Project management, Service management, and HTTP Monitor management. It does not expose Health Check, Incident, status, uptime, or dashboard routes.
+The Fastify API currently exposes health, Project, Service, and HTTP Monitor management, plus Monitor status, evidence history, and check-based uptime. It does not expose dashboard routes.
 
 Dates are serialized as ISO 8601 strings in JSON. Resource IDs are UUIDs.
 
@@ -282,6 +282,31 @@ For all three routes:
 
 For the two history routes, an invalid limit returns `400` with `{ "error": "limit must be an integer between 1 and 200" }`.
 
+### `GET /monitors/:monitorId/uptime`
+
+Returns check-based uptime for a trailing elapsed-time window. The optional `window` query parameter accepts `24h`, `7d`, or `30d` and defaults to `24h`. Pulse captures one request time as `to`, derives `from` by subtracting the exact duration, and includes checks whose timestamps fall in `[from, to)`.
+
+Response `200`:
+
+```json
+{
+  "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+  "window": "24h",
+  "from": "2026-09-25T15:00:00.000Z",
+  "to": "2026-09-26T15:00:00.000Z",
+  "totalChecks": 1440,
+  "healthyChecks": 1437,
+  "unhealthyChecks": 3,
+  "uptimePercentage": 99.7917
+}
+```
+
+`uptimePercentage` is the percentage of matching Health Checks whose outcome is healthy, rounded to at most four decimal places. It is `null` when the window contains no checks. This is check-based uptime; it does not measure time-weighted availability or define an SLA or SLO.
+
+- Invalid Monitor UUID: `400`, `{ "error": "Invalid monitor ID" }`
+- Invalid or repeated window: `400`, `{ "error": "window must be 24h, 7d, or 30d" }`
+- Unknown Monitor: `404`, `{ "error": "Monitor not found" }`
+
 ## Planned v0.1 API
 
-The v0.1 product still needs check-based uptime over an explicitly defined window and higher-level Service status presentation. Exact route shapes are intentionally not specified yet.
+The v0.1 product still needs higher-level Service status presentation. Its exact route shape is intentionally not specified yet.

@@ -46,6 +46,7 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 - HTTP Monitor creation, Service-scoped listing, and retrieval through the HTTP API.
 - Bounded Health Check and Incident history through the HTTP API.
 - Derived Monitor probe status with open-Incident state exposed separately.
+- Check-based uptime over exact trailing 24-hour, 7-day, and 30-day windows.
 - PostgreSQL persistence for Projects, Services, HTTP Monitors, Health Checks, and Incidents.
 - HTTP checks that record health, status code, latency, time, and error information.
 - Per-Monitor interval, timeout, failure threshold, recovery threshold, and enabled state in persistence.
@@ -57,7 +58,6 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 
 ### Planned for v0.1
 
-- Check-based uptime calculations over an explicit window.
 - A dashboard for Projects, Services, current health, latency history, and active incidents.
 - Incident detail views with the HTTP evidence recorded around the failure.
 - Documented deployment packaging, including the Docker Compose outcome named by the original design.
@@ -115,6 +115,8 @@ The v0.1 evidence model is HTTP-level:
 - The sequence of checks leading to incident opening and recovery.
 
 The schema and contracts allow `http_error`, `connection_error`, `timeout`, `dns_error`, `tls_error`, and `network_error`. The current checker emits the first three categories; finer DNS, TLS, and network classification remains incomplete.
+
+Check-based uptime is the proportion of persisted Health Checks that are healthy within an explicitly selected elapsed-time window. A window without Health Check evidence has no percentage. This metric is not time-weighted availability and does not define an SLA or SLO.
 
 ### Dashboard expectations
 

@@ -2,6 +2,19 @@ export type ServiceStatus = "healthy" | "unhealthy" | "unknown";
 
 export type MonitorStatus = "healthy" | "unhealthy" | "unknown";
 
+export type UptimeWindow = "24h" | "7d" | "30d";
+
+export type MonitorUptime = {
+  monitorId: string;
+  window: UptimeWindow;
+  from: Date;
+  to: Date;
+  totalChecks: number;
+  healthyChecks: number;
+  unhealthyChecks: number;
+  uptimePercentage: number | null;
+};
+
 export type HealthCheckErrorType =
   | "http_error"
   | "connection_error"

@@ -18,6 +18,13 @@ function databaseSelecting(rows: unknown[]) {
   return { db: { select } as unknown as Database, limit };
 }
 
+function databaseAggregating(row: unknown) {
+  const where = vi.fn().mockResolvedValue([row]);
+  const from = vi.fn().mockReturnValue({ where });
+  const select = vi.fn().mockReturnValue({ from });
+  return { db: { select } as unknown as Database, where };
+}
+
 describe("createMonitoringRepository", () => {
   it("returns bigint health-check identities as precision-safe decimal strings", async () => {
     const databaseId = 9_007_199_254_740_993n;
@@ -101,4 +108,42 @@ describe("createMonitoringRepository", () => {
         .rejects.toThrow("limit must be a positive safe integer");
     },
   );
+
+  it("maps PostgreSQL bigint uptime counts to safe JavaScript numbers", async () => {
+    const { db } = databaseAggregating({
+      totalChecks: "1440",
+      healthyChecks: "1437",
+    });
+    const repository = createMonitoringRepository(db);
+    const from = new Date("2026-01-01T00:00:00.000Z");
+    const to = new Date("2026-01-02T00:00:00.000Z");
+
+    await expect(repository.getCheckBasedUptimeCounts(monitorId, from, to))
+      .resolves.toEqual({ totalChecks: 1440, healthyChecks: 1437 });
+  });
+
+  it("returns zero uptime counts when the aggregate has no matching checks", async () => {
+    const { db } = databaseAggregating({ totalChecks: "0", healthyChecks: "0" });
+    const repository = createMonitoringRepository(db);
+
+    await expect(repository.getCheckBasedUptimeCounts(
+      monitorId,
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-02T00:00:00.000Z"),
+    )).resolves.toEqual({ totalChecks: 0, healthyChecks: 0 });
+  });
+
+  it("rejects uptime counts that cannot be represented safely as numbers", async () => {
+    const { db } = databaseAggregating({
+      totalChecks: "9007199254740992",
+      healthyChecks: "1",
+    });
+    const repository = createMonitoringRepository(db);
+
+    await expect(repository.getCheckBasedUptimeCounts(
+      monitorId,
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-02T00:00:00.000Z"),
+    )).rejects.toThrow("uptime counts exceed JavaScript's safe integer range");
+  });
 });

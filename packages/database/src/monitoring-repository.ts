@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { HealthCheck, HttpMonitor, Incident } from "@pulse/contracts";
-import { and, desc, eq, gt, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, lt, notExists, sql } from "drizzle-orm";
 import type { Database } from "./client.js";
 import { healthChecks, incidents, monitors } from "./schema.js";
 
@@ -10,6 +10,14 @@ function validateHistoryLimit(limit: number): void {
   if (!Number.isSafeInteger(limit) || limit <= 0) {
     throw new RangeError("limit must be a positive safe integer");
   }
+}
+
+function toSafeCount(value: string | bigint | number): number {
+  const count = BigInt(value);
+  if (count > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError("uptime counts exceed JavaScript's safe integer range");
+  }
+  return Number(count);
 }
 
 export function createMonitoringRepository(db: Database) {
@@ -90,6 +98,29 @@ export function createMonitoringRepository(db: Database) {
         ...row,
         status: row.status as Incident["status"],
       }));
+    },
+
+    async getCheckBasedUptimeCounts(
+      monitorId: string,
+      from: Date,
+      to: Date,
+    ): Promise<{ totalChecks: number; healthyChecks: number }> {
+      const [row] = await db
+        .select({
+          totalChecks: sql<string>`count(*)`,
+          healthyChecks: sql<string>`count(*) filter (where ${healthChecks.healthy})`,
+        })
+        .from(healthChecks)
+        .where(and(
+          eq(healthChecks.monitorId, monitorId),
+          gte(healthChecks.checkedAt, from),
+          lt(healthChecks.checkedAt, to),
+        ));
+
+      return {
+        totalChecks: toSafeCount(row.totalChecks),
+        healthyChecks: toSafeCount(row.healthyChecks),
+      };
     },
 
     async getRecentCheckOutcomes(monitorId: string, limit: number): Promise<boolean[]> {

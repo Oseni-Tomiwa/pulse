@@ -2,9 +2,11 @@ import type {
   HealthCheck,
   HttpMonitor,
   Incident,
+  MonitorUptime,
   MonitorStatus,
   Project,
   Service,
+  UptimeWindow,
 } from "@pulse/contracts";
 import type { CreateMonitorInput } from "@pulse/database";
 import Fastify, { type FastifyServerOptions } from "fastify";
@@ -31,6 +33,11 @@ export type MonitoringReadRepository = {
   getRecentHealthChecks(monitorId: string, limit: number): Promise<HealthCheck[]>;
   getRecentIncidents(monitorId: string, limit: number): Promise<Incident[]>;
   getOpenIncident(monitorId: string): Promise<Incident | null>;
+  getCheckBasedUptimeCounts(
+    monitorId: string,
+    from: Date,
+    to: Date,
+  ): Promise<{ totalChecks: number; healthyChecks: number }>;
 };
 
 export type AppRepositories = {
@@ -43,12 +50,24 @@ export type AppRepositories = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_HISTORY_LIMIT = 50;
 const MAX_HISTORY_LIMIT = 200;
+const UPTIME_WINDOW_MS: Record<UptimeWindow, number> = {
+  "24h": 24 * 60 * 60 * 1_000,
+  "7d": 7 * 24 * 60 * 60 * 1_000,
+  "30d": 30 * 24 * 60 * 60 * 1_000,
+};
 
 function parseHistoryLimit(value: unknown): number | null {
   if (value === undefined) return DEFAULT_HISTORY_LIMIT;
   if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
   const limit = Number(value);
   return Number.isSafeInteger(limit) && limit <= MAX_HISTORY_LIMIT ? limit : null;
+}
+
+function parseUptimeWindow(value: unknown): UptimeWindow | null {
+  if (value === undefined) return "24h";
+  return value === "24h" || value === "7d" || value === "30d"
+    ? value
+    : null;
 }
 
 function isClientError(error: unknown): error is { statusCode: number; message: string } {
@@ -61,6 +80,7 @@ function isClientError(error: unknown): error is { statusCode: number; message: 
 export function buildApp(
   repositories: AppRepositories,
   options: FastifyServerOptions = { logger: true },
+  now: () => Date = () => new Date(),
 ) {
   const app = Fastify(options);
   const {
@@ -286,6 +306,43 @@ export function buildApp(
       return monitor;
     },
   );
+
+  app.get<{
+    Params: { monitorId: string };
+    Querystring: { window?: unknown };
+  }>("/monitors/:monitorId/uptime", async (request, reply) => {
+    const { monitorId } = request.params;
+    if (!UUID_PATTERN.test(monitorId)) {
+      return reply.status(400).send({ error: "Invalid monitor ID" });
+    }
+    const window = parseUptimeWindow(request.query.window);
+    if (window === null) {
+      return reply.status(400).send({ error: "window must be 24h, 7d, or 30d" });
+    }
+    if (!await monitorRepository.getMonitorById(monitorId)) {
+      return reply.status(404).send({ error: "Monitor not found" });
+    }
+
+    const to = now();
+    const from = new Date(to.getTime() - UPTIME_WINDOW_MS[window]);
+    const { totalChecks, healthyChecks } =
+      await monitoringRepository.getCheckBasedUptimeCounts(monitorId, from, to);
+    const uptimePercentage = totalChecks === 0
+      ? null
+      : Math.round((healthyChecks / totalChecks) * 100 * 10_000) / 10_000;
+    const result: MonitorUptime = {
+      monitorId,
+      window,
+      from,
+      to,
+      totalChecks,
+      healthyChecks,
+      unhealthyChecks: totalChecks - healthyChecks,
+      uptimePercentage,
+    };
+
+    return result;
+  });
 
   app.get<{
     Params: { monitorId: string };

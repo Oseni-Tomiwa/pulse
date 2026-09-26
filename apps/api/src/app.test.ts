@@ -151,6 +151,7 @@ function incident(
 function fakeMonitoringReadRepository(
   initialChecks: HealthCheck[] = [],
   initialIncidents: Incident[] = [],
+  uptimeCounts = { totalChecks: 0, healthyChecks: 0 },
 ): MonitoringReadRepository {
   return {
     async getRecentHealthChecks(monitorId, limit) {
@@ -168,6 +169,9 @@ function fakeMonitoringReadRepository(
         (candidate) => candidate.monitorId === monitorId && candidate.status === "open",
       ) ?? null;
     },
+    async getCheckBasedUptimeCounts() {
+      return uptimeCounts;
+    },
   };
 }
 
@@ -177,23 +181,203 @@ function repositories(
   initialMonitors: HttpMonitor[] = [],
   initialChecks: HealthCheck[] = [],
   initialIncidents: Incident[] = [],
+  uptimeCounts = { totalChecks: 0, healthyChecks: 0 },
 ): AppRepositories {
   return {
     projects: fakeProjectRepository(initialProjects),
     services: fakeServiceRepository(initialServices),
     monitors: fakeMonitorRepository(initialMonitors),
-    monitoring: fakeMonitoringReadRepository(initialChecks, initialIncidents),
+    monitoring: fakeMonitoringReadRepository(
+      initialChecks,
+      initialIncidents,
+      uptimeCounts,
+    ),
   };
 }
 
-function app(dependencies: AppRepositories = repositories()) {
-  const instance = buildApp(dependencies, { logger: false });
+function app(
+  dependencies: AppRepositories = repositories(),
+  now: () => Date = () => new Date(),
+) {
+  const instance = buildApp(dependencies, { logger: false }, now);
   openApps.push(instance);
   return instance;
 }
 
 afterEach(async () => {
   await Promise.all(openApps.splice(0).map((instance) => instance.close()));
+});
+
+describe("check-based uptime route", () => {
+  const fixedTo = new Date("2026-09-26T15:00:00.000Z");
+
+  it("defaults to an exact trailing 24-hour window and captures time once", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const dependencies = repositories(
+      [parentProject], [parentService], [existing], [], [],
+      { totalChecks: 4, healthyChecks: 3 },
+    );
+    let nowCalls = 0;
+    let observed: { monitorId: string; from: Date; to: Date } | undefined;
+    dependencies.monitoring.getCheckBasedUptimeCounts = async (monitorId, from, to) => {
+      observed = { monitorId, from, to };
+      return { totalChecks: 4, healthyChecks: 3 };
+    };
+
+    const response = await app(dependencies, () => {
+      nowCalls += 1;
+      return fixedTo;
+    }).inject({ method: "GET", url: `/monitors/${existing.id}/uptime` });
+
+    expect(response.statusCode).toBe(200);
+    expect(nowCalls).toBe(1);
+    expect(observed).toEqual({
+      monitorId: existing.id,
+      from: new Date("2026-09-25T15:00:00.000Z"),
+      to: fixedTo,
+    });
+    expect(response.json()).toEqual({
+      monitorId: existing.id,
+      window: "24h",
+      from: "2026-09-25T15:00:00.000Z",
+      to: "2026-09-26T15:00:00.000Z",
+      totalChecks: 4,
+      healthyChecks: 3,
+      unhealthyChecks: 1,
+      uptimePercentage: 75,
+    });
+  });
+
+  it.each([
+    ["24h", "2026-09-25T15:00:00.000Z"],
+    ["7d", "2026-09-19T15:00:00.000Z"],
+    ["30d", "2026-08-27T15:00:00.000Z"],
+  ])("supports the %s elapsed window", async (window, expectedFrom) => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(
+      repositories([parentProject], [parentService], [existing]),
+      () => fixedTo,
+    ).inject({
+      method: "GET",
+      url: `/monitors/${existing.id}/uptime?window=${window}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      window,
+      from: expectedFrom,
+      to: fixedTo.toISOString(),
+    });
+  });
+
+  it.each([
+    [3, 3, 100],
+    [4, 3, 75],
+    [3, 0, 0],
+    [3, 1, 33.3333],
+    [1440, 1437, 99.7917],
+    [0, 0, null],
+  ])(
+    "derives %s total and %s healthy as %s percent",
+    async (totalChecks, healthyChecks, uptimePercentage) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      const existing = monitor(parentService.id, "API health");
+      const response = await app(
+        repositories(
+          [parentProject], [parentService], [existing], [], [],
+          { totalChecks, healthyChecks },
+        ),
+        () => fixedTo,
+      ).inject({ method: "GET", url: `/monitors/${existing.id}/uptime` });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        totalChecks,
+        healthyChecks,
+        unhealthyChecks: totalChecks - healthyChecks,
+        uptimePercentage,
+      });
+    },
+  );
+
+  it.each(["1h", "24H", "", "custom"])(
+    "rejects invalid uptime window %j",
+    async (window) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      const existing = monitor(parentService.id, "API health");
+      const response = await app(repositories(
+        [parentProject], [parentService], [existing],
+      )).inject({
+        method: "GET",
+        url: `/monitors/${existing.id}/uptime?window=${window}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: "window must be 24h, 7d, or 30d" });
+    },
+  );
+
+  it("rejects a repeated uptime window", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing],
+    )).inject({
+      method: "GET",
+      url: `/monitors/${existing.id}/uptime?window=24h&window=7d`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "window must be 24h, 7d, or 30d" });
+  });
+
+  it("returns 400 for an invalid Monitor ID", async () => {
+    const response = await app().inject({ method: "GET", url: "/monitors/not-a-uuid/uptime" });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Invalid monitor ID" });
+  });
+
+  it("returns 404 before aggregating an unknown Monitor", async () => {
+    const dependencies = repositories();
+    let aggregateCalls = 0;
+    dependencies.monitoring.getCheckBasedUptimeCounts = async () => {
+      aggregateCalls += 1;
+      return { totalChecks: 0, healthyChecks: 0 };
+    };
+    const response = await app(dependencies).inject({
+      method: "GET",
+      url: `/monitors/${randomUUID()}/uptime`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Monitor not found" });
+    expect(aggregateCalls).toBe(0);
+  });
+
+  it("sanitizes uptime repository failures", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const dependencies = repositories([parentProject], [parentService], [existing]);
+    dependencies.monitoring.getCheckBasedUptimeCounts = async () => {
+      throw new Error("postgresql://admin:secret@example.invalid/pulse");
+    };
+    const response = await app(dependencies).inject({
+      method: "GET",
+      url: `/monitors/${existing.id}/uptime`,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: "Internal Server Error" });
+    expect(response.body).not.toContain("secret");
+  });
 });
 
 describe("monitoring read routes", () => {

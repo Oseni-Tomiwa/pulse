@@ -243,6 +243,56 @@ describe("monitoring repository against PostgreSQL", () => {
     expect(await repository.getRecentCheckOutcomes(monitorId, 3)).toEqual([false, true, false]);
   });
 
+  it("aggregates check-based uptime within a half-open window for one Monitor", async () => {
+    const monitorId = await createMonitor();
+    const otherMonitorId = await createMonitor();
+    const from = new Date("2026-01-01T00:00:00.000Z");
+    const to = new Date("2026-01-02T00:00:00.000Z");
+    const base = {
+      monitorId,
+      statusCode: 204,
+      latencyMs: 1,
+      errorType: null,
+      errorMessage: null,
+    } as const;
+
+    await repository.insertHealthCheck({
+      ...base, healthy: true, checkedAt: new Date(from.getTime() - 1),
+    });
+    await repository.insertHealthCheck({ ...base, healthy: true, checkedAt: from });
+    await repository.insertHealthCheck({
+      ...base,
+      healthy: false,
+      statusCode: 500,
+      checkedAt: new Date("2026-01-01T12:00:00.000Z"),
+      errorType: "http_error",
+      errorMessage: "HTTP 500",
+    });
+    await repository.insertHealthCheck({
+      ...base, healthy: true, checkedAt: new Date(to.getTime() - 1),
+    });
+    await repository.insertHealthCheck({ ...base, healthy: true, checkedAt: to });
+    await repository.insertHealthCheck({
+      ...base,
+      monitorId: otherMonitorId,
+      healthy: true,
+      checkedAt: new Date("2026-01-01T12:00:00.000Z"),
+    });
+
+    await expect(repository.getCheckBasedUptimeCounts(monitorId, from, to))
+      .resolves.toEqual({ totalChecks: 3, healthyChecks: 2 });
+  });
+
+  it("returns zero check-based uptime counts for a window without evidence", async () => {
+    const monitorId = await createMonitor();
+
+    await expect(repository.getCheckBasedUptimeCounts(
+      monitorId,
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-02T00:00:00.000Z"),
+    )).resolves.toEqual({ totalChecks: 0, healthyChecks: 0 });
+  });
+
   it("finds an open incident and lets the partial unique index prevent another", async () => {
     const monitorId = await createMonitor();
     const startedAt = new Date("2026-01-01T12:00:00.000Z");

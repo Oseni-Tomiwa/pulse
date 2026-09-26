@@ -118,6 +118,8 @@ A Health Check is an immutable observation produced by running a Monitor.
 
 The monitoring repository reads outcomes and public Health Check history newest first using `checkedAt DESC, id DESC`. The identity ID provides deterministic ordering when timestamps are equal. Due-Monitor discovery treats a Monitor as current when a check is newer than `asOf - intervalMs`; otherwise it is due.
 
+The existing `health_checks(monitor_id, checked_at DESC, id DESC)` index also supports Monitor-scoped check-based uptime aggregation over `[from, to)`. PostgreSQL computes total and healthy counts directly; the API does not load Health Check rows to calculate the percentage.
+
 PostgreSQL and Drizzle retain the identity as a `bigint` for storage and ordering. At the repository boundary, the ID is converted directly to its decimal string representation, matching the shared `HealthCheck.id` contract. This preserves the full 64-bit value and makes it safe for future JSON responses without coercing it through JavaScript `number`.
 
 Allowed error types are:

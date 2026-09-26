@@ -110,3 +110,5 @@ Runtime configuration is read when executable composition starts. Reusable monit
 ## Derived state
 
 Health is not stored on the Service or Monitor tables. The Monitoring Read API derives `MonitorStatus` from the latest Health Check and returns open-Incident state separately, preserving cases where probe health and incident lifecycle differ. `ServiceStatus` remains a shared view type that is not currently exposed by a route.
+
+Check-based uptime is also derived. The API captures one `to` time per request, subtracts the selected exact elapsed duration, and asks PostgreSQL to aggregate total and healthy checks over `[from, to)`. The repository returns counts rather than Health Check rows. A window without evidence produces a null percentage.
