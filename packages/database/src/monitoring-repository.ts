@@ -6,6 +6,12 @@ import { healthChecks, incidents, monitors } from "./schema.js";
 
 export type NewHealthCheck = Omit<HealthCheck, "id">;
 
+function validateHistoryLimit(limit: number): void {
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new RangeError("limit must be a positive safe integer");
+  }
+}
+
 export function createMonitoringRepository(db: Database) {
   return {
     async getDueHttpMonitors(asOf: Date): Promise<HttpMonitor[]> {
@@ -47,6 +53,43 @@ export function createMonitoringRepository(db: Database) {
         .returning({ id: healthChecks.id });
 
       return inserted.id.toString();
+    },
+
+    async getRecentHealthChecks(
+      monitorId: string,
+      limit: number,
+    ): Promise<HealthCheck[]> {
+      validateHistoryLimit(limit);
+      const rows = await db
+        .select()
+        .from(healthChecks)
+        .where(eq(healthChecks.monitorId, monitorId))
+        .orderBy(desc(healthChecks.checkedAt), desc(healthChecks.id))
+        .limit(limit);
+
+      return rows.map((row) => ({
+        ...row,
+        id: row.id.toString(),
+        errorType: row.errorType as HealthCheck["errorType"],
+      }));
+    },
+
+    async getRecentIncidents(
+      monitorId: string,
+      limit: number,
+    ): Promise<Incident[]> {
+      validateHistoryLimit(limit);
+      const rows = await db
+        .select()
+        .from(incidents)
+        .where(eq(incidents.monitorId, monitorId))
+        .orderBy(desc(incidents.startedAt), desc(incidents.id))
+        .limit(limit);
+
+      return rows.map((row) => ({
+        ...row,
+        status: row.status as Incident["status"],
+      }));
     },
 
     async getRecentCheckOutcomes(monitorId: string, limit: number): Promise<boolean[]> {

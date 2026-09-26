@@ -1,5 +1,7 @@
 export type ServiceStatus = "healthy" | "unhealthy" | "unknown";
 
+export type MonitorStatus = "healthy" | "unhealthy" | "unknown";
+
 export type HealthCheckErrorType =
   | "http_error"
   | "connection_error"

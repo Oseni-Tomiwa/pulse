@@ -1,4 +1,11 @@
-import type { HttpMonitor, Project, Service } from "@pulse/contracts";
+import type {
+  HealthCheck,
+  HttpMonitor,
+  Incident,
+  MonitorStatus,
+  Project,
+  Service,
+} from "@pulse/contracts";
 import type { CreateMonitorInput } from "@pulse/database";
 import Fastify, { type FastifyServerOptions } from "fastify";
 
@@ -20,13 +27,29 @@ export type MonitorRepository = {
   getMonitorById(id: string): Promise<HttpMonitor | null>;
 };
 
+export type MonitoringReadRepository = {
+  getRecentHealthChecks(monitorId: string, limit: number): Promise<HealthCheck[]>;
+  getRecentIncidents(monitorId: string, limit: number): Promise<Incident[]>;
+  getOpenIncident(monitorId: string): Promise<Incident | null>;
+};
+
 export type AppRepositories = {
   projects: ProjectRepository;
   services: ServiceRepository;
   monitors: MonitorRepository;
+  monitoring: MonitoringReadRepository;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DEFAULT_HISTORY_LIMIT = 50;
+const MAX_HISTORY_LIMIT = 200;
+
+function parseHistoryLimit(value: unknown): number | null {
+  if (value === undefined) return DEFAULT_HISTORY_LIMIT;
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
+  const limit = Number(value);
+  return Number.isSafeInteger(limit) && limit <= MAX_HISTORY_LIMIT ? limit : null;
+}
 
 function isClientError(error: unknown): error is { statusCode: number; message: string } {
   return error instanceof Error &&
@@ -44,6 +67,7 @@ export function buildApp(
     projects: projectRepository,
     services: serviceRepository,
     monitors: monitorRepository,
+    monitoring: monitoringRepository,
   } = repositories;
 
   app.setErrorHandler((error, request, reply) => {
@@ -260,6 +284,70 @@ export function buildApp(
         return reply.status(404).send({ error: "Monitor not found" });
       }
       return monitor;
+    },
+  );
+
+  app.get<{
+    Params: { monitorId: string };
+    Querystring: { limit?: unknown };
+  }>("/monitors/:monitorId/checks", async (request, reply) => {
+    const { monitorId } = request.params;
+    if (!UUID_PATTERN.test(monitorId)) {
+      return reply.status(400).send({ error: "Invalid monitor ID" });
+    }
+    const limit = parseHistoryLimit(request.query.limit);
+    if (limit === null) {
+      return reply.status(400).send({
+        error: "limit must be an integer between 1 and 200",
+      });
+    }
+    if (!await monitorRepository.getMonitorById(monitorId)) {
+      return reply.status(404).send({ error: "Monitor not found" });
+    }
+    return monitoringRepository.getRecentHealthChecks(monitorId, limit);
+  });
+
+  app.get<{
+    Params: { monitorId: string };
+    Querystring: { limit?: unknown };
+  }>("/monitors/:monitorId/incidents", async (request, reply) => {
+    const { monitorId } = request.params;
+    if (!UUID_PATTERN.test(monitorId)) {
+      return reply.status(400).send({ error: "Invalid monitor ID" });
+    }
+    const limit = parseHistoryLimit(request.query.limit);
+    if (limit === null) {
+      return reply.status(400).send({
+        error: "limit must be an integer between 1 and 200",
+      });
+    }
+    if (!await monitorRepository.getMonitorById(monitorId)) {
+      return reply.status(404).send({ error: "Monitor not found" });
+    }
+    return monitoringRepository.getRecentIncidents(monitorId, limit);
+  });
+
+  app.get<{ Params: { monitorId: string } }>(
+    "/monitors/:monitorId/status",
+    async (request, reply) => {
+      const { monitorId } = request.params;
+      if (!UUID_PATTERN.test(monitorId)) {
+        return reply.status(400).send({ error: "Invalid monitor ID" });
+      }
+      if (!await monitorRepository.getMonitorById(monitorId)) {
+        return reply.status(404).send({ error: "Monitor not found" });
+      }
+
+      const [recentChecks, openIncident] = await Promise.all([
+        monitoringRepository.getRecentHealthChecks(monitorId, 1),
+        monitoringRepository.getOpenIncident(monitorId),
+      ]);
+      const latestCheck = recentChecks[0] ?? null;
+      const probeStatus: MonitorStatus = latestCheck === null
+        ? "unknown"
+        : latestCheck.healthy ? "healthy" : "unhealthy";
+
+      return { monitorId, probeStatus, latestCheck, openIncident };
     },
   );
 

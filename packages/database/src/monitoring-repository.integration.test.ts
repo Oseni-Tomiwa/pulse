@@ -132,6 +132,104 @@ describe("monitoring repository against PostgreSQL", () => {
     });
   });
 
+  it("returns bounded Health Check history newest first with decimal-string IDs", async () => {
+    const monitorId = await createMonitor();
+    const otherMonitorId = await createMonitor();
+    expect(await repository.getRecentHealthChecks(otherMonitorId, 10)).toEqual([]);
+    const sharedTime = new Date("2026-01-02T12:00:00.000Z");
+    const base = {
+      monitorId,
+      statusCode: 204,
+      latencyMs: 1,
+      errorType: null,
+      errorMessage: null,
+    } as const;
+    await repository.insertHealthCheck({
+      ...base,
+      healthy: false,
+      statusCode: 500,
+      checkedAt: new Date("2026-01-01T12:00:00.000Z"),
+      errorType: "http_error",
+      errorMessage: "HTTP 500",
+    });
+    const firstId = await repository.insertHealthCheck({
+      ...base,
+      healthy: true,
+      checkedAt: sharedTime,
+    });
+    const secondId = await repository.insertHealthCheck({
+      ...base,
+      healthy: false,
+      statusCode: 500,
+      checkedAt: sharedTime,
+      errorType: "http_error",
+      errorMessage: "HTTP 500",
+    });
+    await repository.insertHealthCheck({
+      ...base,
+      monitorId: otherMonitorId,
+      healthy: true,
+      checkedAt: new Date("2026-01-03T12:00:00.000Z"),
+    });
+
+    const recent = await repository.getRecentHealthChecks(monitorId, 2);
+    expect(recent.map(({ id }) => id)).toEqual([secondId, firstId]);
+    expect(recent.every(({ id }) => typeof id === "string")).toBe(true);
+    expect(recent.every((check) => check.monitorId === monitorId)).toBe(true);
+  });
+
+  it("returns bounded Incident history by start time and descending ID", async () => {
+    const monitorId = await createMonitor();
+    const otherMonitorId = await createMonitor();
+    expect(await repository.getRecentIncidents(monitorId, 10)).toEqual([]);
+    const sharedStart = new Date("2026-01-01T12:00:00.000Z");
+    const lowerId = "10000000-0000-4000-8000-000000000001";
+    const higherId = "10000000-0000-4000-8000-000000000002";
+    await db.insert(incidents).values([
+      {
+        id: lowerId,
+        monitorId,
+        status: "resolved",
+        startedAt: sharedStart,
+        resolvedAt: new Date("2026-01-01T12:01:00.000Z"),
+      },
+      {
+        id: higherId,
+        monitorId,
+        status: "resolved",
+        startedAt: sharedStart,
+        resolvedAt: new Date("2026-01-01T12:02:00.000Z"),
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000003",
+        monitorId,
+        status: "open",
+        startedAt: new Date("2026-01-02T12:00:00.000Z"),
+        resolvedAt: null,
+      },
+      {
+        id: randomUUID(),
+        monitorId: otherMonitorId,
+        status: "open",
+        startedAt: new Date("2026-01-03T12:00:00.000Z"),
+        resolvedAt: null,
+      },
+    ]);
+
+    const recent = await repository.getRecentIncidents(monitorId, 3);
+    expect(recent.map(({ id }) => id)).toEqual([
+      "10000000-0000-4000-8000-000000000003",
+      higherId,
+      lowerId,
+    ]);
+    expect(recent.map(({ status }) => status)).toEqual([
+      "open",
+      "resolved",
+      "resolved",
+    ]);
+    expect(recent.every((candidate) => candidate.monitorId === monitorId)).toBe(true);
+  });
+
   it("returns limited outcomes newest first, breaking equal timestamps by descending ID", async () => {
     const monitorId = await createMonitor();
     const sharedTime = new Date("2026-01-01T12:00:00.000Z");

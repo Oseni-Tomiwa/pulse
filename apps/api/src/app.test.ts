@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
-import type { HttpMonitor, Project, Service } from "@pulse/contracts";
+import type {
+  HealthCheck,
+  HttpMonitor,
+  Incident,
+  Project,
+  Service,
+} from "@pulse/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildApp,
   type AppRepositories,
   type MonitorRepository,
+  type MonitoringReadRepository,
   type ProjectRepository,
   type ServiceRepository,
 } from "./app.js";
@@ -107,15 +114,75 @@ function fakeMonitorRepository(initialMonitors: HttpMonitor[] = []): MonitorRepo
   };
 }
 
+function healthCheck(
+  monitorId: string,
+  id: string,
+  healthy: boolean,
+  checkedAt = new Date("2026-01-01T12:00:00.000Z"),
+): HealthCheck {
+  return {
+    id,
+    monitorId,
+    healthy,
+    statusCode: healthy ? 204 : 500,
+    latencyMs: 12,
+    checkedAt,
+    errorType: healthy ? null : "http_error",
+    errorMessage: healthy ? null : "HTTP 500",
+  };
+}
+
+function incident(
+  monitorId: string,
+  status: Incident["status"],
+  startedAt = new Date("2026-01-01T12:00:00.000Z"),
+): Incident {
+  return {
+    id: randomUUID(),
+    monitorId,
+    status,
+    startedAt,
+    resolvedAt: status === "resolved"
+      ? new Date(startedAt.getTime() + 60_000)
+      : null,
+  };
+}
+
+function fakeMonitoringReadRepository(
+  initialChecks: HealthCheck[] = [],
+  initialIncidents: Incident[] = [],
+): MonitoringReadRepository {
+  return {
+    async getRecentHealthChecks(monitorId, limit) {
+      return initialChecks
+        .filter((check) => check.monitorId === monitorId)
+        .slice(0, limit);
+    },
+    async getRecentIncidents(monitorId, limit) {
+      return initialIncidents
+        .filter((candidate) => candidate.monitorId === monitorId)
+        .slice(0, limit);
+    },
+    async getOpenIncident(monitorId) {
+      return initialIncidents.find(
+        (candidate) => candidate.monitorId === monitorId && candidate.status === "open",
+      ) ?? null;
+    },
+  };
+}
+
 function repositories(
   initialProjects: Project[] = [],
   initialServices: Service[] = [],
   initialMonitors: HttpMonitor[] = [],
+  initialChecks: HealthCheck[] = [],
+  initialIncidents: Incident[] = [],
 ): AppRepositories {
   return {
     projects: fakeProjectRepository(initialProjects),
     services: fakeServiceRepository(initialServices),
     monitors: fakeMonitorRepository(initialMonitors),
+    monitoring: fakeMonitoringReadRepository(initialChecks, initialIncidents),
   };
 }
 
@@ -127,6 +194,213 @@ function app(dependencies: AppRepositories = repositories()) {
 
 afterEach(async () => {
   await Promise.all(openApps.splice(0).map((instance) => instance.close()));
+});
+
+describe("monitoring read routes", () => {
+  it("returns the newest 50 Health Checks by default with decimal-string IDs", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const checks = Array.from({ length: 55 }, (_, index) =>
+      healthCheck(existing.id, String(9_007_199_254_740_993n - BigInt(index)), index % 2 === 0),
+    );
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing], checks,
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/checks` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveLength(50);
+    expect(response.json()[0].id).toBe("9007199254740993");
+    expect(typeof response.json()[0].id).toBe("string");
+  });
+
+  it("respects an explicit Health Check limit", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const checks = [
+      healthCheck(existing.id, "3", true),
+      healthCheck(existing.id, "2", false),
+      healthCheck(existing.id, "1", true),
+    ];
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing], checks,
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/checks?limit=2` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().map(({ id }: { id: string }) => id)).toEqual(["3", "2"]);
+  });
+
+  it("returns an empty Health Check history when no evidence exists", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/checks` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([]);
+  });
+
+  it.each(["0", "-1", "1.5", "201", "9007199254740992", "abc", "01"])(
+    "rejects invalid history limit %s",
+    async (limit) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      const existing = monitor(parentService.id, "API health");
+      const response = await app(repositories(
+        [parentProject], [parentService], [existing],
+      )).inject({
+        method: "GET",
+        url: `/monitors/${existing.id}/checks?limit=${limit}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: "limit must be an integer between 1 and 200" });
+    },
+  );
+
+  it("rejects a repeated history limit", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing],
+    )).inject({
+      method: "GET",
+      url: `/monitors/${existing.id}/checks?limit=1&limit=2`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "limit must be an integer between 1 and 200" });
+  });
+
+  it("returns bounded Incident history in repository order", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const open = incident(existing.id, "open", new Date("2026-01-02T12:00:00Z"));
+    const resolved = incident(existing.id, "resolved", new Date("2026-01-01T12:00:00Z"));
+    const older = incident(existing.id, "resolved", new Date("2025-12-31T12:00:00Z"));
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing], [], [open, resolved, older],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/incidents?limit=2` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([
+      {
+        ...open,
+        startedAt: open.startedAt.toISOString(),
+        resolvedAt: null,
+      },
+      {
+        ...resolved,
+        startedAt: resolved.startedAt.toISOString(),
+        resolvedAt: resolved.resolvedAt?.toISOString(),
+      },
+    ]);
+  });
+
+  it("returns an empty Incident history when none exists", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/incidents` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([]);
+  });
+
+  it("returns unknown status only when no Health Check exists", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/status` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      monitorId: existing.id,
+      probeStatus: "unknown",
+      latestCheck: null,
+      openIncident: null,
+    });
+  });
+
+  it("reports an unhealthy probe without implying an Incident is open", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const latest = healthCheck(existing.id, "1", false);
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing], [latest],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/status` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      probeStatus: "unhealthy",
+      latestCheck: { id: "1", healthy: false },
+      openIncident: null,
+    });
+  });
+
+  it("preserves a healthy latest probe alongside an open Incident", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health", { recoveryThreshold: 2 });
+    const latest = healthCheck(existing.id, "2", true);
+    const open = incident(existing.id, "open");
+    const response = await app(repositories(
+      [parentProject], [parentService], [existing], [latest], [open],
+    )).inject({ method: "GET", url: `/monitors/${existing.id}/status` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      probeStatus: "healthy",
+      latestCheck: { id: "2", healthy: true },
+      openIncident: { id: open.id, status: "open" },
+    });
+  });
+
+  it.each(["checks", "incidents", "status"])(
+    "returns 404 before querying %s evidence for an unknown Monitor",
+    async (resource) => {
+      const response = await app().inject({
+        method: "GET",
+        url: `/monitors/${randomUUID()}/${resource}`,
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ error: "Monitor not found" });
+    },
+  );
+
+  it("returns 400 for an invalid Monitor ID", async () => {
+    const response = await app().inject({ method: "GET", url: "/monitors/not-a-uuid/checks" });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Invalid monitor ID" });
+  });
+
+  it("sanitizes monitoring read repository errors", async () => {
+    const parentProject = project("Pulse");
+    const parentService = service(parentProject.id, "API");
+    const existing = monitor(parentService.id, "API health");
+    const dependencies = repositories([parentProject], [parentService], [existing]);
+    dependencies.monitoring.getRecentHealthChecks = async () => {
+      throw new Error("postgresql://admin:secret@example.invalid/pulse");
+    };
+    const response = await app(dependencies).inject({
+      method: "GET",
+      url: `/monitors/${existing.id}/checks`,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: "Internal Server Error" });
+    expect(response.body).not.toContain("secret");
+  });
 });
 
 describe("monitor routes", () => {

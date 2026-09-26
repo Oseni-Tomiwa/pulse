@@ -198,6 +198,90 @@ Response `200` is one Monitor object in the shape shown above.
 - Invalid Monitor UUID: `400`, `{ "error": "Invalid monitor ID" }`
 - Unknown Monitor: `404`, `{ "error": "Monitor not found" }`
 
+## Monitoring evidence
+
+All evidence routes validate that the Monitor exists. An unknown Monitor returns `404` rather than an empty history.
+
+### `GET /monitors/:monitorId/checks`
+
+Returns recent Health Checks ordered by `checkedAt DESC, id DESC`. The optional `limit` query parameter defaults to `50` and must be an integer from `1` through `200`.
+
+Response `200`:
+
+```json
+[
+  {
+    "id": "9007199254740993",
+    "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+    "healthy": false,
+    "statusCode": 500,
+    "latencyMs": 42,
+    "checkedAt": "2026-09-26T12:10:00.000Z",
+    "errorType": "http_error",
+    "errorMessage": "HTTP 500"
+  }
+]
+```
+
+Health Check IDs are decimal strings because PostgreSQL bigint values are never converted through JavaScript numbers. A Monitor with no checks returns `[]`.
+
+### `GET /monitors/:monitorId/incidents`
+
+Returns recent Incidents ordered by `startedAt DESC, id DESC`. The optional `limit` has the same `50` default and `200` maximum.
+
+Response `200`:
+
+```json
+[
+  {
+    "id": "58a5abe4-f783-46ca-b43d-b44eb8da1da5",
+    "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+    "status": "resolved",
+    "startedAt": "2026-09-26T12:00:00.000Z",
+    "resolvedAt": "2026-09-26T12:04:00.000Z"
+  }
+]
+```
+
+Incident duration is not returned as a separate field. A Monitor with no Incidents returns `[]`.
+
+### `GET /monitors/:monitorId/status`
+
+Returns latest probe state and open-Incident state as separate signals:
+
+```json
+{
+  "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+  "probeStatus": "healthy",
+  "latestCheck": {
+    "id": "42",
+    "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+    "healthy": true,
+    "statusCode": 204,
+    "latencyMs": 12,
+    "checkedAt": "2026-09-26T12:10:00.000Z",
+    "errorType": null,
+    "errorMessage": null
+  },
+  "openIncident": {
+    "id": "58a5abe4-f783-46ca-b43d-b44eb8da1da5",
+    "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+    "status": "open",
+    "startedAt": "2026-09-26T12:00:00.000Z",
+    "resolvedAt": null
+  }
+}
+```
+
+`probeStatus` is `unknown` only when `latestCheck` is null. Otherwise it reflects that check's `healthy` value. A healthy probe can coexist with an open Incident while a recovery threshold is still being satisfied.
+
+For all three routes:
+
+- Invalid Monitor UUID: `400`, `{ "error": "Invalid monitor ID" }`
+- Unknown Monitor: `404`, `{ "error": "Monitor not found" }`
+
+For the two history routes, an invalid limit returns `400` with `{ "error": "limit must be an integer between 1 and 200" }`.
+
 ## Planned v0.1 API
 
-The v0.1 product still needs read APIs for derived status, Health Check history, and Incidents. Exact route shapes are not established by the repository and are intentionally not specified here.
+The v0.1 product still needs check-based uptime over an explicitly defined window and higher-level Service status presentation. Exact route shapes are intentionally not specified yet.

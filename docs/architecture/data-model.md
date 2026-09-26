@@ -116,7 +116,7 @@ A Health Check is an immutable observation produced by running a Monitor.
 | `errorType` | Nullable; constrained to the six shared error categories. |
 | `errorMessage` | Nullable text. |
 
-The monitoring repository reads outcomes newest first using `checkedAt DESC, id DESC`. The identity ID provides deterministic ordering when timestamps are equal. Due-Monitor discovery treats a Monitor as current when a check is newer than `asOf - intervalMs`; otherwise it is due.
+The monitoring repository reads outcomes and public Health Check history newest first using `checkedAt DESC, id DESC`. The identity ID provides deterministic ordering when timestamps are equal. Due-Monitor discovery treats a Monitor as current when a check is newer than `asOf - intervalMs`; otherwise it is due.
 
 PostgreSQL and Drizzle retain the identity as a `bigint` for storage and ordering. At the repository boundary, the ID is converted directly to its decimal string representation, matching the shared `HealthCheck.id` contract. This preserves the full 64-bit value and makes it safe for future JSON responses without coercing it through JavaScript `number`.
 
@@ -143,7 +143,7 @@ An Incident is a period when a Monitor is considered unhealthy.
 | `startedAt` | Required timestamp with time zone. |
 | `resolvedAt` | Nullable timestamp; the repository supplies it when resolving an Incident. |
 
-The `incidents(monitor_id, started_at DESC)` index supports Monitor history. A partial unique index on `monitor_id WHERE status = 'open'` permits at most one open Incident for each Monitor. Repository insertion also uses conflict handling, so a competing open attempt returns no new Incident.
+The `incidents(monitor_id, started_at DESC)` index supports Monitor history. Public history is ordered by `startedAt DESC, id DESC`; the ID provides deterministic ordering for equal timestamps. A partial unique index on `monitor_id WHERE status = 'open'` permits at most one open Incident for each Monitor. Repository insertion also uses conflict handling, so a competing open attempt returns no new Incident.
 
 The check constraint rejects an open Incident with a resolution time and rejects a non-null resolution time earlier than `startedAt`. Because PostgreSQL check constraints accept an unknown result, the current expression does not reject a manually inserted `resolved` Incident whose `resolvedAt` is null. The repository always supplies `resolvedAt` during resolution, but the database constraint is weaker than the intended resolved-state invariant.
 
@@ -159,4 +159,4 @@ Health Checks and Incidents belong to a Monitor rather than directly to a Servic
 
 ## Status
 
-No current health field is persisted on Project, Service, or Monitor. Health is derived from checks and incidents. The shared `ServiceStatus` type (`healthy | unhealthy | unknown`) is an API/view concept and is not a database column.
+No current health field is persisted on Project, Service, or Monitor. Monitor probe status is derived from the latest Health Check: no check is `unknown`, a healthy latest check is `healthy`, and an unhealthy latest check is `unhealthy`. Open-Incident state is returned separately because probe health and incident lifecycle can legitimately differ. The shared `MonitorStatus` and `ServiceStatus` types are API/view concepts and are not database columns.

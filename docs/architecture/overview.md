@@ -47,7 +47,7 @@ Arrows point from a consumer to its dependencies. `@pulse/monitoring` has no Fas
 
 ## API composition
 
-`buildApp()` accepts Project, Service, and Monitor repository interfaces. Fastify injection tests supply in-memory implementations, so route tests require no database or `DATABASE_URL`.
+`buildApp()` accepts Project, Service, Monitor-management, and monitoring-read repository interfaces. Fastify injection tests supply in-memory implementations, so route tests require no database or `DATABASE_URL`.
 
 The executable `server.ts` creates the PostgreSQL client and concrete repositories only inside `startServer()`. Its direct-execution guard prevents importing the module from starting a server or opening a database connection. `SIGINT` and `SIGTERM` close Fastify and the PostgreSQL pool.
 
@@ -109,4 +109,4 @@ Runtime configuration is read when executable composition starts. Reusable monit
 
 ## Derived state
 
-Service health is not stored on the `services` table. Current status is intended to be derived from Monitor observations and incident state. This avoids a second persisted status value that can drift from Health Checks and Incidents. `ServiceStatus` exists as a shared derived API/view type but is not currently exposed by a route.
+Health is not stored on the Service or Monitor tables. The Monitoring Read API derives `MonitorStatus` from the latest Health Check and returns open-Incident state separately, preserving cases where probe health and incident lifecycle differ. `ServiceStatus` remains a shared view type that is not currently exposed by a route.

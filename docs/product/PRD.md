@@ -44,6 +44,8 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 - Project creation, listing, and retrieval through the HTTP API.
 - Service creation, project-scoped listing, and retrieval through the HTTP API.
 - HTTP Monitor creation, Service-scoped listing, and retrieval through the HTTP API.
+- Bounded Health Check and Incident history through the HTTP API.
+- Derived Monitor probe status with open-Incident state exposed separately.
 - PostgreSQL persistence for Projects, Services, HTTP Monitors, Health Checks, and Incidents.
 - HTTP checks that record health, status code, latency, time, and error information.
 - Per-Monitor interval, timeout, failure threshold, recovery threshold, and enabled state in persistence.
@@ -55,8 +57,7 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 
 ### Planned for v0.1
 
-- Read APIs for Monitor state, Health Check history, and Incident history.
-- Derived current status and uptime calculations.
+- Check-based uptime calculations over an explicit window.
 - A dashboard for Projects, Services, current health, latency history, and active incidents.
 - Incident detail views with the HTTP evidence recorded around the failure.
 - Documented deployment packaging, including the Docker Compose outcome named by the original design.

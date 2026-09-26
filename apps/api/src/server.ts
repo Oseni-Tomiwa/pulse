@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import {
   createDatabase,
   createMonitorRepository,
+  createMonitoringRepository,
   createProjectRepository,
   createServiceRepository,
 } from "@pulse/database";
@@ -10,10 +11,12 @@ import { buildApp } from "./app.js";
 
 export async function startServer(): Promise<void> {
   const { db, pool } = createDatabase();
+  const monitoringRepository = createMonitoringRepository(db);
   const app = buildApp({
     projects: createProjectRepository(db),
     services: createServiceRepository(db),
     monitors: createMonitorRepository(db),
+    monitoring: monitoringRepository,
   });
   let shuttingDown = false;
 
