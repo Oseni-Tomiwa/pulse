@@ -18,6 +18,7 @@ Run:
 pnpm --filter @pulse/monitoring test
 pnpm --filter @pulse/database test
 pnpm --filter @pulse/api test
+pnpm --filter @pulse/web test
 pnpm --filter @pulse/worker test
 ```
 
@@ -28,9 +29,10 @@ These suites verify:
 - One-Monitor orchestration and persistence call ordering.
 - Database client lifecycle and integration-database safety validation without opening a PostgreSQL connection.
 - Fastify Project, Service, validation, not-found, error-sanitization, and health behavior through injection.
+- Web routing, light and dark themes, accessible async states, and the typed Project API-client boundary.
 - Sequential worker cycles, per-Monitor failure isolation, polling, configuration, and shutdown behavior.
 
-As of the Check-Based Uptime milestone, the repository contains 33 monitoring, 20 database, 100 API, and 26 worker database-free tests: 179 total. These counts are a snapshot and will change as behavior is added.
+As of the Web Foundation milestone, the repository contains 33 monitoring, 20 database, 100 API, 18 web, and 26 worker database-free tests: 197 total. These counts are a snapshot and will change as behavior is added.
 
 ## PostgreSQL integration tests
 

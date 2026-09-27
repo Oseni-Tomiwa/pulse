@@ -2,17 +2,19 @@
 
 ## System shape
 
-Pulse is a TypeScript pnpm monorepo running on Node.js 24. It currently contains two executable applications and three reusable packages.
+Pulse is a TypeScript pnpm monorepo running on Node.js 24. It currently contains three executable applications and three reusable packages.
 
 ```mermaid
 flowchart TD
-    Client[API client] --> API[apps/api<br/>Fastify]
+    User[Web browser] --> Web[apps/web<br/>React and Vite]
+    Web -->|/api proxy| API[apps/api<br/>Fastify]
     API --> DBP[packages/database]
 
     Worker[apps/worker<br/>polling and cycles] --> Monitoring[packages/monitoring]
     Worker --> DBP
 
     API --> Contracts[packages/contracts]
+    Web --> Contracts
     Worker --> Contracts
     Monitoring --> Contracts
     DBP --> Contracts
@@ -20,19 +22,20 @@ flowchart TD
     Monitoring --> Target[HTTP target]
 ```
 
-The reusable packages do not depend on application packages. The API and worker compose packages at their executable boundaries; neither application is a dependency of another package.
+The reusable packages do not depend on application packages. The web, API, and worker applications consume reusable packages only; no application depends on another application.
 
 ## Workspace responsibilities
 
 | Workspace | Responsibility |
 | --- | --- |
 | `apps/api` | Fastify routes, HTTP validation and responses, runtime composition of management repositories, and API shutdown. |
+| `apps/web` | React application shell, browser routing, themes, async-state presentation, and the typed HTTP API boundary. |
 | `apps/worker` | Due-Monitor cycles, recurring polling, logging, runtime composition of monitoring and persistence, and graceful shutdown. |
 | `packages/contracts` | Shared domain types for Projects, Services, HTTP Monitors, Health Checks, Incidents, statuses, and error categories. |
 | `packages/database` | Drizzle schema, PostgreSQL client creation, migrations, repository queries, and integration-test database safety. |
 | `packages/monitoring` | HTTP probing, pure incident decisions, and orchestration of one Monitor execution. |
 
-There is no `apps/web` or shared configuration package in the current repository. Both appeared in the original design but remain planned.
+There is no shared configuration package in the current repository. The web application keeps its Vite and TypeScript configuration local.
 
 ## Dependency direction
 
@@ -40,10 +43,19 @@ There is no `apps/web` or shared configuration package in the current repository
 @pulse/monitoring ──> @pulse/contracts
 @pulse/database   ──> @pulse/contracts
 @pulse/api        ──> @pulse/contracts, @pulse/database
+@pulse/web        ──> @pulse/contracts
 @pulse/worker     ──> @pulse/contracts, @pulse/database, @pulse/monitoring
 ```
 
 Arrows point from a consumer to its dependencies. `@pulse/monitoring` has no Fastify, PostgreSQL, Drizzle, worker, or application dependency. Its one-Monitor orchestration accepts an HTTP checker and persistence operations through explicit arguments.
+
+## Web boundary
+
+The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. Milestone 1 provides the shell and route boundaries without loading product data or embedding fake fixtures.
+
+The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and currently exposes only Project listing and retrieval. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
+
+Shared domain contracts contain `Date` fields, while their JSON representation contains ISO strings. The web client derives its response types from `@pulse/contracts` through a JSON serialization type rather than claiming that unparsed JSON values are domain `Date` objects.
 
 ## API composition
 

@@ -45,6 +45,7 @@ pnpm --filter @pulse/contracts build
 pnpm --filter @pulse/monitoring build
 pnpm --filter @pulse/database build
 pnpm --filter @pulse/api build
+pnpm --filter @pulse/web build
 pnpm --filter @pulse/worker build
 ```
 
@@ -80,6 +81,24 @@ pnpm --filter @pulse/api start
 ```
 
 The API listens on `0.0.0.0:3000`. Its executable composition requires `DATABASE_URL`. The database-free app builder and injection tests do not.
+
+## Run the web application
+
+Start the Fastify API, then run:
+
+```bash
+pnpm --filter @pulse/web dev
+```
+
+Vite serves the React application and proxies `/api/*` requests to `http://localhost:3000`, removing the `/api` prefix before forwarding. This keeps browser routes separate from the API without adding CORS behavior to Fastify.
+
+Build the production static assets with:
+
+```bash
+pnpm --filter @pulse/web build
+```
+
+The generated assets are written to `apps/web/dist`. Production hosting and the required `/api` reverse proxy are not configured yet.
 
 ## Run the worker
 
