@@ -40,6 +40,29 @@ describe("createPulseApiClient", () => {
     );
   });
 
+  it("creates a Project with JSON and returns the server representation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(project), { status: 201 }),
+    );
+    const signal = new AbortController().signal;
+
+    const result = await createPulseApiClient({ fetchImpl }).createProject(
+      { name: "Pulse" },
+      { signal },
+    );
+
+    expect(result).toEqual(project);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/projects", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "Pulse" }),
+      signal,
+    });
+  });
+
   it("forwards an AbortSignal", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify([project]), { status: 200 }),

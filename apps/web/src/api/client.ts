@@ -10,6 +10,18 @@ export type PulseApiClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
+export type ProjectResponse = JsonResponse<Project>;
+
+export type CreateProjectInput = {
+  name: string;
+};
+
+export type PulseApiClient = {
+  listProjects(options?: RequestOptions): Promise<ProjectResponse[]>;
+  getProject(projectId: string, options?: RequestOptions): Promise<ProjectResponse>;
+  createProject(input: CreateProjectInput, options?: RequestOptions): Promise<ProjectResponse>;
+};
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -20,15 +32,23 @@ export class ApiError extends Error {
   }
 }
 
-export function createPulseApiClient(options: PulseApiClientOptions = {}) {
+export function createPulseApiClient(options: PulseApiClientOptions = {}): PulseApiClient {
   const baseUrl = (options.baseUrl ?? "/api").replace(/\/$/, "");
   const fetchImpl = options.fetchImpl ?? fetch;
 
-  async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
-    const response = await fetchImpl(`${baseUrl}${path}`, {
-      headers: { accept: "application/json" },
-      signal: requestOptions.signal,
-    });
+  async function request<T>(
+    path: string,
+    requestOptions: RequestOptions & { method?: "POST"; body?: unknown } = {},
+  ): Promise<T> {
+    const headers: Record<string, string> = { accept: "application/json" };
+    const init: RequestInit = { headers, signal: requestOptions.signal };
+    if (requestOptions.method) init.method = requestOptions.method;
+    if (requestOptions.body !== undefined) {
+      headers["content-type"] = "application/json";
+      init.body = JSON.stringify(requestOptions.body);
+    }
+
+    const response = await fetchImpl(`${baseUrl}${path}`, init);
 
     if (!response.ok) {
       let message = "Request failed";
@@ -53,13 +73,20 @@ export function createPulseApiClient(options: PulseApiClientOptions = {}) {
 
   return {
     listProjects(requestOptions?: RequestOptions) {
-      return request<JsonResponse<Project>[]>("/projects", requestOptions);
+      return request<ProjectResponse[]>("/projects", requestOptions);
     },
     getProject(projectId: string, requestOptions?: RequestOptions) {
-      return request<JsonResponse<Project>>(
+      return request<ProjectResponse>(
         `/projects/${encodeURIComponent(projectId)}`,
         requestOptions,
       );
+    },
+    createProject(input: CreateProjectInput, requestOptions?: RequestOptions) {
+      return request<ProjectResponse>("/projects", {
+        ...requestOptions,
+        method: "POST",
+        body: input,
+      });
     },
   };
 }

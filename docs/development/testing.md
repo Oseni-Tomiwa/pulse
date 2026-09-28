@@ -29,10 +29,10 @@ These suites verify:
 - One-Monitor orchestration and persistence call ordering.
 - Database client lifecycle and integration-database safety validation without opening a PostgreSQL connection.
 - Fastify Project, Service, validation, not-found, error-sanitization, and health behavior through injection.
-- Web routing, light and dark themes, accessible async states, and the typed Project API-client boundary.
+- Web routing, light and dark themes, accessible async states, the typed Project API-client boundary, and Project list/create/detail states.
 - Sequential worker cycles, per-Monitor failure isolation, polling, configuration, and shutdown behavior.
 
-As of the Web Foundation milestone, the repository contains 33 monitoring, 20 database, 100 API, 18 web, and 26 worker database-free tests: 197 total. These counts are a snapshot and will change as behavior is added.
+As of the Projects web milestone, the repository contains 33 monitoring, 20 database, 100 API, 34 web, and 26 worker database-free tests: 213 total. These counts are a snapshot and will change as behavior is added.
 
 ## PostgreSQL integration tests
 

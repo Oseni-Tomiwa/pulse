@@ -29,7 +29,7 @@ The reusable packages do not depend on application packages. The web, API, and w
 | Workspace | Responsibility |
 | --- | --- |
 | `apps/api` | Fastify routes, HTTP validation and responses, runtime composition of management repositories, and API shutdown. |
-| `apps/web` | React application shell, browser routing, themes, async-state presentation, and the typed HTTP API boundary. |
+| `apps/web` | React application shell, browser routing, themes, async-state presentation, the typed HTTP API boundary, and the Project management workflow. |
 | `apps/worker` | Due-Monitor cycles, recurring polling, logging, runtime composition of monitoring and persistence, and graceful shutdown. |
 | `packages/contracts` | Shared domain types for Projects, Services, HTTP Monitors, Health Checks, Incidents, statuses, and error categories. |
 | `packages/database` | Drizzle schema, PostgreSQL client creation, migrations, repository queries, and integration-test database safety. |
@@ -51,9 +51,11 @@ Arrows point from a consumer to its dependencies. `@pulse/monitoring` has no Fas
 
 ## Web boundary
 
-The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. Milestone 1 provides the shell and route boundaries without loading product data or embedding fake fixtures.
+The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. The Projects route loads the real collection, supports creation after a successful collection load, and links to a Project Details route that retrieves the selected Project. Service and Monitor routes remain structural boundaries without fabricated data.
 
-The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and currently exposes only Project listing and retrieval. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
+The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and exposes Project listing, retrieval, and creation. Collection and detail requests abort when their route leaves the page. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
+
+Project creation is offered only after the collection has loaded successfully. A successful response is prepended to the known collection and deduplicated by ID; an unknown collection remains an error or loading state until listing succeeds.
 
 Shared domain contracts contain `Date` fields, while their JSON representation contains ISO strings. The web client derives its response types from `@pulse/contracts` through a JSON serialization type rather than claiming that unparsed JSON values are domain `Date` objects.
 

@@ -4,7 +4,7 @@ Pulse is a lightweight, self-hosted monitoring and incident-diagnostics platform
 
 ## Status
 
-Pulse is in active v0.1 development. The monitoring backend, management and monitoring-read APIs, worker runtime, and production web foundation are implemented and tested. Product data views and deployment packaging remain incomplete.
+Pulse is in active v0.1 development. The monitoring backend, management and monitoring-read APIs, worker runtime, and the first production web workflow for listing, creating, and opening Projects are implemented and tested. Additional product views and deployment packaging remain incomplete.
 
 ## Repository
 
