@@ -55,11 +55,11 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 - Due-Monitor discovery and sequential worker cycles with per-Monitor failure isolation.
 - A non-overlapping recurring worker loop with graceful shutdown.
 - Database-free tests, guarded PostgreSQL integration tests, and a real lifecycle smoke test.
-- A production web workflow for listing Projects, creating a Project, and opening Project Details using the real management API.
+- Production web workflows for listing and creating Projects and Services, with real Project and Service detail views.
 
 ### Planned for v0.1
 
-- Web workflows for Services, Monitors, current health, latency history, and active incidents.
+- Web workflows for Monitors, current health, latency history, and active incidents.
 - Incident detail views with the HTTP evidence recorded around the failure.
 - Documented deployment packaging, including the Docker Compose outcome named by the original design.
 - A complete fresh-machine setup and release verification path.
@@ -121,7 +121,7 @@ Check-based uptime is the proportion of persisted Health Checks that are healthy
 
 ### Dashboard expectations
 
-The Projects web workflow is implemented. The remaining product views planned for v0.1 should expose:
+The Project and Service web workflows are implemented. The remaining product views planned for v0.1 should expose:
 
 - Projects and their Services.
 - Derived Service or Monitor health.

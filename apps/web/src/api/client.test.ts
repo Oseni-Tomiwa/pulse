@@ -1,4 +1,4 @@
-import type { Project } from "@pulse/contracts";
+import type { Project, Service } from "@pulse/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, createPulseApiClient } from "./client";
 import type { JsonResponse } from "./types";
@@ -7,6 +7,13 @@ const project: JsonResponse<Project> = {
   id: "d92a0809-c7cb-4925-9fab-16ecdf0cc48a",
   name: "Pulse",
   createdAt: "2026-09-27T12:00:00.000Z",
+};
+
+const service: JsonResponse<Service> = {
+  id: "29962974-50bb-4213-9e15-bbbe78747e22",
+  projectId: project.id,
+  name: "API",
+  createdAt: "2026-09-27T13:00:00.000Z",
 };
 
 describe("createPulseApiClient", () => {
@@ -74,6 +81,50 @@ describe("createPulseApiClient", () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/projects",
       expect.objectContaining({ signal }),
+    );
+  });
+
+  it("lists Services through an encoded Project path", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([service]), { status: 200 }),
+    );
+    const signal = new AbortController().signal;
+    const result = await createPulseApiClient({ fetchImpl })
+      .listServices("project/id", { signal });
+
+    expect(result).toEqual([service]);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/projects/project%2Fid/services",
+      expect.objectContaining({ signal }),
+    );
+  });
+
+  it("creates a Service under a Project with JSON", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(service), { status: 201 }),
+    );
+    const result = await createPulseApiClient({ fetchImpl })
+      .createService(project.id, { name: "API" });
+
+    expect(result).toEqual(service);
+    expect(fetchImpl).toHaveBeenCalledWith(`/api/projects/${project.id}/services`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ name: "API" }),
+      signal: undefined,
+    });
+  });
+
+  it("gets one Service using an encoded ID", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(service), { status: 200 }),
+    );
+    const result = await createPulseApiClient({ fetchImpl }).getService("service/id");
+
+    expect(result).toEqual(service);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/services/service%2Fid",
+      expect.any(Object),
     );
   });
 

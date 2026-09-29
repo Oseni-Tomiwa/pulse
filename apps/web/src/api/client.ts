@@ -1,4 +1,4 @@
-import type { Project } from "@pulse/contracts";
+import type { Project, Service } from "@pulse/contracts";
 import type { JsonResponse } from "./types";
 
 export type RequestOptions = {
@@ -11,8 +11,13 @@ export type PulseApiClientOptions = {
 };
 
 export type ProjectResponse = JsonResponse<Project>;
+export type ServiceResponse = JsonResponse<Service>;
 
 export type CreateProjectInput = {
+  name: string;
+};
+
+export type CreateServiceInput = {
   name: string;
 };
 
@@ -20,6 +25,13 @@ export type PulseApiClient = {
   listProjects(options?: RequestOptions): Promise<ProjectResponse[]>;
   getProject(projectId: string, options?: RequestOptions): Promise<ProjectResponse>;
   createProject(input: CreateProjectInput, options?: RequestOptions): Promise<ProjectResponse>;
+  listServices(projectId: string, options?: RequestOptions): Promise<ServiceResponse[]>;
+  createService(
+    projectId: string,
+    input: CreateServiceInput,
+    options?: RequestOptions,
+  ): Promise<ServiceResponse>;
+  getService(serviceId: string, options?: RequestOptions): Promise<ServiceResponse>;
 };
 
 export class ApiError extends Error {
@@ -87,6 +99,32 @@ export function createPulseApiClient(options: PulseApiClientOptions = {}): Pulse
         method: "POST",
         body: input,
       });
+    },
+    listServices(projectId: string, requestOptions?: RequestOptions) {
+      return request<ServiceResponse[]>(
+        `/projects/${encodeURIComponent(projectId)}/services`,
+        requestOptions,
+      );
+    },
+    createService(
+      projectId: string,
+      input: CreateServiceInput,
+      requestOptions?: RequestOptions,
+    ) {
+      return request<ServiceResponse>(
+        `/projects/${encodeURIComponent(projectId)}/services`,
+        {
+          ...requestOptions,
+          method: "POST",
+          body: input,
+        },
+      );
+    },
+    getService(serviceId: string, requestOptions?: RequestOptions) {
+      return request<ServiceResponse>(
+        `/services/${encodeURIComponent(serviceId)}`,
+        requestOptions,
+      );
     },
   };
 }

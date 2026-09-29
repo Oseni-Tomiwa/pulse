@@ -15,6 +15,16 @@ const apiClient: PulseApiClient = {
   createProject: async () => {
     throw new Error("createProject is not used in router tests");
   },
+  listServices: async () => [],
+  createService: async () => {
+    throw new Error("createService is not used in router tests");
+  },
+  getService: async () => ({
+    id: "456",
+    projectId: "123",
+    name: "API",
+    createdAt: "2026-09-27T13:00:00.000Z",
+  }),
 };
 
 function renderRoute(path: string) {
@@ -30,7 +40,7 @@ describe("application routing", () => {
     ["/", "Overview"],
     ["/projects", "Projects"],
     ["/projects/123", "Pulse"],
-    ["/services/456", "Service Details"],
+    ["/services/456", "API"],
     ["/monitors/789", "Monitor Details"],
   ])("renders %s inside the application shell", async (path, heading) => {
     renderRoute(path);

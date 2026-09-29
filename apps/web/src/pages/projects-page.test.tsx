@@ -27,6 +27,9 @@ function fakeClient(overrides: Partial<PulseApiClient> = {}): PulseApiClient {
     listProjects: vi.fn().mockResolvedValue([]),
     getProject: vi.fn().mockResolvedValue(existing),
     createProject: vi.fn().mockResolvedValue(existing),
+    listServices: vi.fn().mockResolvedValue([]),
+    createService: vi.fn(),
+    getService: vi.fn(),
     ...overrides,
   };
 }

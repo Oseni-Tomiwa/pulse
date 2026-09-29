@@ -20,7 +20,7 @@ function createRoutes(apiClient: PulseApiClient): RouteObject[] {
       { index: true, element: <OverviewPage /> },
       { path: "projects", element: <ProjectsPage apiClient={apiClient} /> },
       { path: "projects/:projectId", element: <ProjectDetailsPage apiClient={apiClient} /> },
-      { path: "services/:serviceId", element: <ServiceDetailsPage /> },
+      { path: "services/:serviceId", element: <ServiceDetailsPage apiClient={apiClient} /> },
       { path: "monitors/:monitorId", element: <MonitorDetailsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
