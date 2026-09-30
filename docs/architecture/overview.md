@@ -51,11 +51,11 @@ Arrows point from a consumer to its dependencies. `@pulse/monitoring` has no Fas
 
 ## Web boundary
 
-The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. Project and Service views load real management data, support creation only after their relevant collections are authoritative, and link through the resource hierarchy. The Monitor route remains a structural boundary without fabricated data.
+The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. Project, Service, and Monitor views load real management data. Project, Service, and Monitor creation is available only after the relevant parent and collection are authoritative, and the views link through the resource hierarchy. Monitor Details presents stored HTTP Monitor configuration without requesting operational evidence.
 
-The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and exposes Project and Service listing, retrieval, and creation. Collection and detail requests abort when their route leaves the page. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
+The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and exposes Project, Service, and HTTP Monitor listing, retrieval, and creation. Collection and detail requests abort when their route leaves the page. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
 
-Project and Service creation are offered only after their collections have loaded successfully. A successful response is prepended to the known collection and deduplicated by ID; an unknown collection remains an error or loading state until listing succeeds.
+Project, Service, and Monitor creation are offered only after their collections have loaded successfully. A successful response is prepended to the known collection and deduplicated by ID; an unknown collection remains an error or loading state until listing succeeds.
 
 Shared domain contracts contain `Date` fields, while their JSON representation contains ISO strings. The web client derives its response types from `@pulse/contracts` through a JSON serialization type rather than claiming that unparsed JSON values are domain `Date` objects.
 

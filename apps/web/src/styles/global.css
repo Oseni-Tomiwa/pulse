@@ -40,14 +40,23 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline
 .button:disabled { cursor: wait; opacity: .65; }
 .button-secondary { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
 .projects-content, .details-section, .future-section { margin-top: 2rem; }
-.project-grid, .service-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
-.project-card, .service-card { display: grid; gap: .65rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); box-shadow: var(--shadow); text-decoration: none; }
-.project-card:hover, .service-card:hover { border-color: var(--accent); }
-.project-card span, .service-card span { color: var(--text-muted); font-size: .875rem; }
-.create-project-form, .create-service-form { display: grid; gap: 1rem; max-width: 34rem; margin-bottom: 1rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); box-shadow: var(--shadow); }
-.create-project-form label, .create-service-form label { display: block; margin-bottom: .45rem; font-weight: 650; }
-.create-project-form input, .create-service-form input { width: 100%; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: .55rem; background: var(--canvas); color: var(--text); }
-.create-project-form input:focus, .create-service-form input:focus { outline: 3px solid var(--focus); outline-offset: 2px; }
+.project-grid, .service-grid, .monitor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+.project-card, .service-card, .monitor-card { display: grid; gap: .65rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); box-shadow: var(--shadow); text-decoration: none; }
+.project-card:hover, .service-card:hover, .monitor-card:hover { border-color: var(--accent); }
+.project-card span, .service-card span, .monitor-card span { color: var(--text-muted); font-size: .875rem; }
+.create-project-form, .create-service-form, .create-monitor-form { display: grid; gap: 1rem; max-width: 34rem; margin-bottom: 1rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); box-shadow: var(--shadow); }
+.create-project-form label, .create-service-form label, .create-monitor-form label { display: block; margin-bottom: .45rem; font-weight: 650; }
+.create-project-form input, .create-service-form input, .create-monitor-form input, .create-monitor-form select { width: 100%; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: .55rem; background: var(--canvas); color: var(--text); }
+.create-project-form input:focus, .create-service-form input:focus, .create-monitor-form input:focus, .create-monitor-form select:focus { outline: 3px solid var(--focus); outline-offset: 2px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.checkbox-field { display: flex !important; align-items: center; gap: .6rem; margin: 0; }
+.checkbox-field input { width: auto; }
+.configuration-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 2rem 0 0; overflow: hidden; border: 1px solid var(--border); border-radius: .8rem; background: var(--border); box-shadow: var(--shadow); }
+.configuration-list div { min-width: 0; padding: 1rem 1.25rem; background: var(--surface); }
+.configuration-list dt { color: var(--text-muted); font-size: .75rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.configuration-list dd { margin: .45rem 0 0; }
+.configuration-value { overflow-wrap: anywhere; }
+
 .field-error { margin: 0; color: #c23535; }
 .details-section h2 { margin: 0 0 1rem; font-size: 1.25rem; }
 .hierarchy-link { margin: 0 0 1.5rem; }
@@ -70,6 +79,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline
   .topbar { min-height: 56px; justify-content: flex-end; }
   .page-toolbar { align-items: stretch; flex-direction: column; }
   .page-toolbar > .button { align-self: start; }
+  .form-grid, .configuration-list { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

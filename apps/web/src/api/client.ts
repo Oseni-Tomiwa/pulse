@@ -1,4 +1,4 @@
-import type { Project, Service } from "@pulse/contracts";
+import type { HttpMonitor, Project, Service } from "@pulse/contracts";
 import type { JsonResponse } from "./types";
 
 export type RequestOptions = {
@@ -12,6 +12,7 @@ export type PulseApiClientOptions = {
 
 export type ProjectResponse = JsonResponse<Project>;
 export type ServiceResponse = JsonResponse<Service>;
+export type MonitorResponse = JsonResponse<HttpMonitor>;
 
 export type CreateProjectInput = {
   name: string;
@@ -19,6 +20,17 @@ export type CreateProjectInput = {
 
 export type CreateServiceInput = {
   name: string;
+};
+
+export type CreateMonitorInput = {
+  name: string;
+  url: string;
+  method?: HttpMonitor["method"];
+  intervalMs?: number;
+  timeoutMs?: number;
+  failureThreshold?: number;
+  recoveryThreshold?: number;
+  enabled?: boolean;
 };
 
 export type PulseApiClient = {
@@ -32,6 +44,13 @@ export type PulseApiClient = {
     options?: RequestOptions,
   ): Promise<ServiceResponse>;
   getService(serviceId: string, options?: RequestOptions): Promise<ServiceResponse>;
+  listMonitors(serviceId: string, options?: RequestOptions): Promise<MonitorResponse[]>;
+  createMonitor(
+    serviceId: string,
+    input: CreateMonitorInput,
+    options?: RequestOptions,
+  ): Promise<MonitorResponse>;
+  getMonitor(monitorId: string, options?: RequestOptions): Promise<MonitorResponse>;
 };
 
 export class ApiError extends Error {
@@ -123,6 +142,28 @@ export function createPulseApiClient(options: PulseApiClientOptions = {}): Pulse
     getService(serviceId: string, requestOptions?: RequestOptions) {
       return request<ServiceResponse>(
         `/services/${encodeURIComponent(serviceId)}`,
+        requestOptions,
+      );
+    },
+    listMonitors(serviceId: string, requestOptions?: RequestOptions) {
+      return request<MonitorResponse[]>(
+        "/services/" + encodeURIComponent(serviceId) + "/monitors",
+        requestOptions,
+      );
+    },
+    createMonitor(
+      serviceId: string,
+      input: CreateMonitorInput,
+      requestOptions?: RequestOptions,
+    ) {
+      return request<MonitorResponse>(
+        "/services/" + encodeURIComponent(serviceId) + "/monitors",
+        { ...requestOptions, method: "POST", body: input },
+      );
+    },
+    getMonitor(monitorId: string, requestOptions?: RequestOptions) {
+      return request<MonitorResponse>(
+        "/monitors/" + encodeURIComponent(monitorId),
         requestOptions,
       );
     },

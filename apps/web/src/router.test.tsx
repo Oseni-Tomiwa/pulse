@@ -25,6 +25,14 @@ const apiClient: PulseApiClient = {
     name: "API",
     createdAt: "2026-09-27T13:00:00.000Z",
   }),
+  listMonitors: async () => [],
+  createMonitor: async () => { throw new Error("not used"); },
+  getMonitor: async () => ({
+    id: "789", serviceId: "456", name: "Production API", kind: "http",
+    url: "https://example.com/health", method: "GET", intervalMs: 60000,
+    timeoutMs: 10000, failureThreshold: 3, recoveryThreshold: 1,
+    enabled: true, createdAt: "2026-09-27T14:00:00.000Z",
+  }),
 };
 
 function renderRoute(path: string) {
@@ -41,7 +49,7 @@ describe("application routing", () => {
     ["/projects", "Projects"],
     ["/projects/123", "Pulse"],
     ["/services/456", "API"],
-    ["/monitors/789", "Monitor Details"],
+    ["/monitors/789", "Production API"],
   ])("renders %s inside the application shell", async (path, heading) => {
     renderRoute(path);
     expect(screen.getByRole("banner")).toBeInTheDocument();

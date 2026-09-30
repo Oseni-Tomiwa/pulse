@@ -1,4 +1,4 @@
-import type { Project, Service } from "@pulse/contracts";
+import type { HttpMonitor, Project, Service } from "@pulse/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, createPulseApiClient } from "./client";
 import type { JsonResponse } from "./types";
@@ -7,6 +7,21 @@ const project: JsonResponse<Project> = {
   id: "d92a0809-c7cb-4925-9fab-16ecdf0cc48a",
   name: "Pulse",
   createdAt: "2026-09-27T12:00:00.000Z",
+};
+
+const monitor: JsonResponse<HttpMonitor> = {
+  id: "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
+  serviceId: "29962974-50bb-4213-9e15-bbbe78747e22",
+  name: "Production API",
+  kind: "http",
+  url: "https://example.com/health",
+  method: "GET",
+  intervalMs: 60000,
+  timeoutMs: 10000,
+  failureThreshold: 3,
+  recoveryThreshold: 1,
+  enabled: true,
+  createdAt: "2026-09-27T14:00:00.000Z",
 };
 
 const service: JsonResponse<Service> = {
@@ -124,6 +139,58 @@ describe("createPulseApiClient", () => {
     expect(result).toEqual(service);
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/services/service%2Fid",
+      expect.any(Object),
+    );
+  });
+
+
+  it("lists Monitors through an encoded Service path", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([monitor]), { status: 200 }),
+    );
+    const signal = new AbortController().signal;
+    const result = await createPulseApiClient({ fetchImpl }).listMonitors("service/id", { signal });
+    expect(result).toEqual([monitor]);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/services/service%2Fid/monitors",
+      expect.objectContaining({ signal }),
+    );
+  });
+
+  it("creates a Monitor with only the supplied optional configuration", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(monitor), { status: 201 }),
+    );
+    const result = await createPulseApiClient({ fetchImpl }).createMonitor(service.id, {
+      name: "Production API",
+      url: "https://example.com/health",
+      method: "HEAD",
+      timeoutMs: 5000,
+      enabled: false,
+    });
+    expect(result).toEqual(monitor);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/services/" + service.id + "/monitors", {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Production API",
+        url: "https://example.com/health",
+        method: "HEAD",
+        timeoutMs: 5000,
+        enabled: false,
+      }),
+      signal: undefined,
+    });
+  });
+
+  it("gets one Monitor using an encoded ID", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(monitor), { status: 200 }),
+    );
+    const result = await createPulseApiClient({ fetchImpl }).getMonitor("monitor/id");
+    expect(result).toEqual(monitor);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/monitors/monitor%2Fid",
       expect.any(Object),
     );
   });
