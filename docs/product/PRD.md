@@ -55,12 +55,13 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 - Due-Monitor discovery and sequential worker cycles with per-Monitor failure isolation.
 - A non-overlapping recurring worker loop with graceful shutdown.
 - Database-free tests, guarded PostgreSQL integration tests, and a real lifecycle smoke test.
-- Production web workflows for listing and creating Projects and Services, with real Project and Service detail views.
+- Production web workflows for listing and creating Projects, Services, and HTTP Monitors, with real detail views.
+- Monitor Details views for independent probe status, open-Incident state, check-based uptime, recent Health Checks, and Incident history.
 
 ### Planned for v0.1
 
-- Web workflows for Monitors, current health, latency history, and active incidents.
 - Incident detail views with the HTTP evidence recorded around the failure.
+- Richer latency-history presentation after its semantics and visual form are defined.
 - Documented deployment packaging, including the Docker Compose outcome named by the original design.
 - A complete fresh-machine setup and release verification path.
 
@@ -121,14 +122,11 @@ Check-based uptime is the proportion of persisted Health Checks that are healthy
 
 ### Dashboard expectations
 
-The Project and Service web workflows are implemented. The remaining product views planned for v0.1 should expose:
+The Project, Service, and Monitor web workflows are implemented. Monitor Details exposes current probe evidence, open-Incident state, check-based uptime, and bounded check and Incident histories as independent resources. Remaining product views planned for v0.1 should expose:
 
-- Projects and their Services.
-- Derived Service or Monitor health.
-- Latest check and latency.
-- Active and historical incidents.
-- Health Check and latency history.
-- HTTP evidence associated with an incident.
+- Derived Service-level health when its aggregation semantics are defined.
+- Incident detail context around the recorded HTTP evidence.
+- A richer latency-history presentation without inventing unavailable diagnostics.
 
 ## Release criteria
 

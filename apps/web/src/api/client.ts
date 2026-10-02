@@ -1,4 +1,13 @@
-import type { HttpMonitor, Project, Service } from "@pulse/contracts";
+import type {
+  HealthCheck,
+  HttpMonitor,
+  Incident,
+  MonitorStatus,
+  MonitorUptime,
+  Project,
+  Service,
+  UptimeWindow,
+} from "@pulse/contracts";
 import type { JsonResponse } from "./types";
 
 export type RequestOptions = {
@@ -13,6 +22,15 @@ export type PulseApiClientOptions = {
 export type ProjectResponse = JsonResponse<Project>;
 export type ServiceResponse = JsonResponse<Service>;
 export type MonitorResponse = JsonResponse<HttpMonitor>;
+export type HealthCheckResponse = JsonResponse<HealthCheck>;
+export type IncidentResponse = JsonResponse<Incident>;
+export type MonitorUptimeResponse = JsonResponse<MonitorUptime>;
+export type MonitorStatusResponse = {
+  monitorId: string;
+  probeStatus: MonitorStatus;
+  latestCheck: HealthCheckResponse | null;
+  openIncident: IncidentResponse | null;
+};
 
 export type CreateProjectInput = {
   name: string;
@@ -51,6 +69,10 @@ export type PulseApiClient = {
     options?: RequestOptions,
   ): Promise<MonitorResponse>;
   getMonitor(monitorId: string, options?: RequestOptions): Promise<MonitorResponse>;
+  getMonitorStatus(monitorId: string, options?: RequestOptions): Promise<MonitorStatusResponse>;
+  getMonitorUptime(monitorId: string, window: UptimeWindow, options?: RequestOptions): Promise<MonitorUptimeResponse>;
+  listHealthChecks(monitorId: string, options?: RequestOptions): Promise<HealthCheckResponse[]>;
+  listIncidents(monitorId: string, options?: RequestOptions): Promise<IncidentResponse[]>;
 };
 
 export class ApiError extends Error {
@@ -164,6 +186,30 @@ export function createPulseApiClient(options: PulseApiClientOptions = {}): Pulse
     getMonitor(monitorId: string, requestOptions?: RequestOptions) {
       return request<MonitorResponse>(
         "/monitors/" + encodeURIComponent(monitorId),
+        requestOptions,
+      );
+    },
+    getMonitorStatus(monitorId: string, requestOptions?: RequestOptions) {
+      return request<MonitorStatusResponse>(
+        "/monitors/" + encodeURIComponent(monitorId) + "/status",
+        requestOptions,
+      );
+    },
+    getMonitorUptime(monitorId: string, window: UptimeWindow, requestOptions?: RequestOptions) {
+      return request<MonitorUptimeResponse>(
+        "/monitors/" + encodeURIComponent(monitorId) + "/uptime?window=" + encodeURIComponent(window),
+        requestOptions,
+      );
+    },
+    listHealthChecks(monitorId: string, requestOptions?: RequestOptions) {
+      return request<HealthCheckResponse[]>(
+        "/monitors/" + encodeURIComponent(monitorId) + "/checks",
+        requestOptions,
+      );
+    },
+    listIncidents(monitorId: string, requestOptions?: RequestOptions) {
+      return request<IncidentResponse[]>(
+        "/monitors/" + encodeURIComponent(monitorId) + "/incidents",
         requestOptions,
       );
     },

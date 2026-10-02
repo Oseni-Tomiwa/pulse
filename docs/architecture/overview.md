@@ -29,7 +29,7 @@ The reusable packages do not depend on application packages. The web, API, and w
 | Workspace | Responsibility |
 | --- | --- |
 | `apps/api` | Fastify routes, HTTP validation and responses, runtime composition of management repositories, and API shutdown. |
-| `apps/web` | React application shell, browser routing, themes, async-state presentation, the typed HTTP API boundary, and Project and Service management workflows. |
+| `apps/web` | React application shell, browser routing, themes, async-state presentation, the typed HTTP API boundary, Project/Service/Monitor management, and Monitor operational evidence views. |
 | `apps/worker` | Due-Monitor cycles, recurring polling, logging, runtime composition of monitoring and persistence, and graceful shutdown. |
 | `packages/contracts` | Shared domain types for Projects, Services, HTTP Monitors, Health Checks, Incidents, statuses, and error categories. |
 | `packages/database` | Drizzle schema, PostgreSQL client creation, migrations, repository queries, and integration-test database safety. |
@@ -51,9 +51,9 @@ Arrows point from a consumer to its dependencies. `@pulse/monitoring` has no Fas
 
 ## Web boundary
 
-The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. Project, Service, and Monitor views load real management data. Project, Service, and Monitor creation is available only after the relevant parent and collection are authoritative, and the views link through the resource hierarchy. Monitor Details presents stored HTTP Monitor configuration without requesting operational evidence.
+The React application uses browser routes for Overview, Projects, and Project → Service → Monitor detail pages. Project, Service, and Monitor views load real management data. Project, Service, and Monitor creation is available only after the relevant parent and collection are authoritative, and the views link through the resource hierarchy. Monitor Details keeps stored configuration authoritative while loading status, check-based uptime, Health Checks, and Incidents independently. Probe status and open-Incident state remain separate, including a healthy latest probe while recovery is still below its configured threshold.
 
-The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and exposes Project, Service, and HTTP Monitor listing, retrieval, and creation. Collection and detail requests abort when their route leaves the page. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
+The typed fetch client defaults to `/api`, accepts an alternate base URL and fetch implementation, forwards abort signals, and exposes Project, Service, and HTTP Monitor management plus Monitor status, uptime, Health Check, and Incident reads. Collection, detail, and operational requests abort when their route leaves the page. Changing the uptime window also aborts the stale request, and each response retains the backend-captured window timestamps. During development, Vite proxies `/api/*` to the Fastify server on port 3000 and removes the `/api` prefix. Production reverse-proxy configuration remains part of deployment packaging.
 
 Project, Service, and Monitor creation are offered only after their collections have loaded successfully. A successful response is prepended to the known collection and deduplicated by ID; an unknown collection remains an error or loading state until listing succeeds.
 

@@ -33,6 +33,16 @@ const apiClient: PulseApiClient = {
     timeoutMs: 10000, failureThreshold: 3, recoveryThreshold: 1,
     enabled: true, createdAt: "2026-09-27T14:00:00.000Z",
   }),
+  getMonitorStatus: async () => ({
+    monitorId: "789", probeStatus: "unknown", latestCheck: null, openIncident: null,
+  }),
+  getMonitorUptime: async (_monitorId, window) => ({
+    monitorId: "789", window,
+    from: "2026-09-26T14:00:00.000Z", to: "2026-09-27T14:00:00.000Z",
+    totalChecks: 0, healthyChecks: 0, unhealthyChecks: 0, uptimePercentage: null,
+  }),
+  listHealthChecks: async () => [],
+  listIncidents: async () => [],
 };
 
 function renderRoute(path: string) {

@@ -1,4 +1,11 @@
-import type { HttpMonitor, Project, Service } from "@pulse/contracts";
+import type {
+  HealthCheck,
+  HttpMonitor,
+  Incident,
+  MonitorUptime,
+  Project,
+  Service,
+} from "@pulse/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, createPulseApiClient } from "./client";
 import type { JsonResponse } from "./types";
@@ -22,6 +29,36 @@ const monitor: JsonResponse<HttpMonitor> = {
   recoveryThreshold: 1,
   enabled: true,
   createdAt: "2026-09-27T14:00:00.000Z",
+};
+
+const healthCheck: JsonResponse<HealthCheck> = {
+  id: "9007199254740993",
+  monitorId: monitor.id,
+  healthy: false,
+  statusCode: 500,
+  latencyMs: 42,
+  checkedAt: "2026-09-27T15:00:00.000Z",
+  errorType: "http_error",
+  errorMessage: "HTTP 500",
+};
+
+const incident: JsonResponse<Incident> = {
+  id: "58a5abe4-f783-46ca-b43d-b44eb8da1da5",
+  monitorId: monitor.id,
+  status: "open",
+  startedAt: "2026-09-27T15:00:00.000Z",
+  resolvedAt: null,
+};
+
+const uptime: JsonResponse<MonitorUptime> = {
+  monitorId: monitor.id,
+  window: "7d",
+  from: "2026-09-20T15:00:00.000Z",
+  to: "2026-09-27T15:00:00.000Z",
+  totalChecks: 4,
+  healthyChecks: 3,
+  unhealthyChecks: 1,
+  uptimePercentage: 75,
 };
 
 const service: JsonResponse<Service> = {
@@ -191,6 +228,76 @@ describe("createPulseApiClient", () => {
     expect(result).toEqual(monitor);
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/monitors/monitor%2Fid",
+      expect.any(Object),
+    );
+  });
+
+
+  it("gets derived Monitor status without deriving it in the client", async () => {
+    const status = {
+      monitorId: monitor.id,
+      probeStatus: "healthy" as const,
+      latestCheck: { ...healthCheck, healthy: true },
+      openIncident: incident,
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(status), { status: 200 }),
+    );
+    const signal = new AbortController().signal;
+
+    const result = await createPulseApiClient({ fetchImpl })
+      .getMonitorStatus("monitor/id", { signal });
+
+    expect(result).toEqual(status);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/monitors/monitor%2Fid/status",
+      expect.objectContaining({ signal }),
+    );
+  });
+
+  it.each(["24h", "7d", "30d"] as const)(
+    "gets backend check-based uptime for the %s window",
+    async (window) => {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ ...uptime, window }), { status: 200 }),
+      );
+
+      const result = await createPulseApiClient({ fetchImpl })
+        .getMonitorUptime("monitor/id", window);
+
+      expect(result.window).toBe(window);
+      expect(fetchImpl).toHaveBeenCalledWith(
+        "/api/monitors/monitor%2Fid/uptime?window=" + window,
+        expect.any(Object),
+      );
+    },
+  );
+
+  it("lists bounded Health Check history with decimal-string IDs", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([healthCheck]), { status: 200 }),
+    );
+
+    const result = await createPulseApiClient({ fetchImpl }).listHealthChecks("monitor/id");
+
+    expect(result).toEqual([healthCheck]);
+    expect(result[0]?.id).toBe("9007199254740993");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/monitors/monitor%2Fid/checks",
+      expect.any(Object),
+    );
+  });
+
+  it("lists bounded Incident history", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([incident]), { status: 200 }),
+    );
+
+    const result = await createPulseApiClient({ fetchImpl }).listIncidents("monitor/id");
+
+    expect(result).toEqual([incident]);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/monitors/monitor%2Fid/incidents",
       expect.any(Object),
     );
   });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, type MonitorResponse, type PulseApiClient } from "../api/client";
 import { ErrorState, LoadingState } from "../components/async-states";
+import { MonitorObservability } from "./monitor-observability";
 import { PageHeader } from "./page-header";
 
 type MonitorState =
@@ -57,6 +58,7 @@ export function MonitorDetailsPage({ apiClient }: { apiClient: PulseApiClient })
         <div><dt>Failure threshold</dt><dd>{monitor.failureThreshold}</dd></div>
         <div><dt>Recovery threshold</dt><dd>{monitor.recoveryThreshold}</dd></div>
       </dl>
+      <MonitorObservability apiClient={apiClient} monitorId={monitor.id} enabled={monitor.enabled} />
     </>
   );
 }
