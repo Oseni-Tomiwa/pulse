@@ -10,7 +10,8 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "smoke:test": "tsx src/smoke-test.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "validate:observability": "tsx src/observability-validation.ts"
   },
   "dependencies": {
     "@pulse/contracts": "workspace:*",
