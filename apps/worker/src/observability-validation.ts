@@ -24,6 +24,111 @@ const lifecycle = [
 ] as const;
 
 type LifecycleStage = "no_evidence" | (typeof lifecycle)[number]["name"];
+type SetupOperation =
+  | "start_http_server"
+  | "insert_project"
+  | "insert_service"
+  | "insert_monitor"
+  | "assert_initial_state"
+  | "interactive_command_loop";
+type SafeErrorCategory =
+  | "connection_refused"
+  | "connection_timeout"
+  | "dns_failure"
+  | "network_unreachable"
+  | "authentication_failure"
+  | "permission_failure"
+  | "database_missing"
+  | "relation_or_schema_missing"
+  | "constraint_failure"
+  | "assertion_failure"
+  | "unknown_database_failure"
+  | "unknown_failure";
+type SafeError = {
+  name: string;
+  code: string | null;
+  category: SafeErrorCategory;
+};
+
+const safeErrorNames = new Set([
+  "AggregateError",
+  "AssertionError",
+  "DatabaseError",
+  "Error",
+  "RangeError",
+  "TypeError",
+]);
+const safeRuntimeErrorCodes = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "ERR_ASSERTION",
+  "ESOCKETTIMEDOUT",
+  "ETIMEDOUT",
+]);
+
+function sanitizeError(error: unknown): SafeError {
+  const candidate = typeof error === "object" && error !== null ? error : undefined;
+  const rawName = candidate && "name" in candidate && typeof candidate.name === "string"
+    ? candidate.name
+    : "UnknownError";
+  const name = safeErrorNames.has(rawName) ? rawName : "Error";
+  const rawCode = candidate && "code" in candidate && typeof candidate.code === "string"
+    ? candidate.code.toUpperCase()
+    : null;
+  const code = rawCode && (
+    safeRuntimeErrorCodes.has(rawCode) || /^[A-Z0-9]{5}$/.test(rawCode)
+  ) ? rawCode : null;
+
+  let category: SafeErrorCategory;
+  switch (code) {
+    case "ECONNREFUSED":
+      category = "connection_refused";
+      break;
+    case "ETIMEDOUT":
+    case "ESOCKETTIMEDOUT":
+      category = "connection_timeout";
+      break;
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      category = "dns_failure";
+      break;
+    case "ENETUNREACH":
+    case "EHOSTUNREACH":
+      category = "network_unreachable";
+      break;
+    case "28P01":
+      category = "authentication_failure";
+      break;
+    case "42501":
+      category = "permission_failure";
+      break;
+    case "3D000":
+      category = "database_missing";
+      break;
+    case "3F000":
+    case "42P01":
+      category = "relation_or_schema_missing";
+      break;
+    case "ERR_ASSERTION":
+      category = "assertion_failure";
+      break;
+    default:
+      if (code?.startsWith("23")) {
+        category = "constraint_failure";
+      } else if (code && /^[A-Z0-9]{5}$/.test(code)) {
+        category = "unknown_database_failure";
+      } else if (name === "AssertionError") {
+        category = "assertion_failure";
+      } else {
+        category = "unknown_failure";
+      }
+  }
+
+  return { name, code, category };
+}
 
 function listen(server: Server): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -56,6 +161,7 @@ async function main(): Promise<void> {
   const monitorId = randomUUID();
   let responseStatus = 204;
   let completedStages = 0;
+  let setupOperation: SetupOperation = "start_http_server";
   let nextCycleAsOf = new Date();
   let serverListening = false;
   let cleanupPromise: Promise<boolean> | undefined;
@@ -79,12 +185,12 @@ async function main(): Promise<void> {
 
   const cleanup = (): Promise<boolean> => {
     cleanupPromise ??= (async () => {
-      const failedOperations: string[] = [];
+      const failures: Array<{ operation: string; error: SafeError }> = [];
       const attempt = async (name: string, operation: () => Promise<unknown>) => {
         try {
           await operation();
-        } catch {
-          failedOperations.push(name);
+        } catch (error) {
+          failures.push({ operation: name, error: sanitizeError(error) });
         }
       };
 
@@ -107,7 +213,7 @@ async function main(): Promise<void> {
       }
       await attempt("close_database_pool", () => pool.end());
 
-      if (failedOperations.length === 0) {
+      if (failures.length === 0) {
         console.log("Validation fixture cleaned up.");
         return true;
       }
@@ -115,7 +221,7 @@ async function main(): Promise<void> {
       console.error(JSON.stringify({
         event: "observability.validation.cleanup_failed",
         ...fixtureDetails(),
-        failedOperations,
+        failures,
         message: "Cleanup was incomplete; use the fixture IDs for manual exact-ID cleanup.",
       }));
       return false;
@@ -234,21 +340,25 @@ async function main(): Promise<void> {
   process.once("SIGTERM", () => onSignal("SIGTERM"));
 
   try {
+    setupOperation = "start_http_server";
     const port = await listen(server);
     serverListening = true;
     const createdAt = new Date();
 
+    setupOperation = "insert_project";
     await db.insert(projects).values({
       id: projectId,
       name: `Pulse observability validation ${runId}`,
       createdAt,
     });
+    setupOperation = "insert_service";
     await db.insert(services).values({
       id: serviceId,
       projectId,
       name: `Validation service ${runId}`,
       createdAt,
     });
+    setupOperation = "insert_monitor";
     await db.insert(monitors).values({
       id: monitorId,
       serviceId,
@@ -263,7 +373,9 @@ async function main(): Promise<void> {
       enabled: true,
       createdAt,
     });
+    setupOperation = "assert_initial_state";
     await assertPersistedStage(0);
+    setupOperation = "interactive_command_loop";
 
     console.log(JSON.stringify({
       event: "observability.validation.ready",
@@ -327,12 +439,13 @@ async function main(): Promise<void> {
 
     await inputFinished;
     if (activeCommand) await activeCommand;
-  } catch {
+  } catch (error) {
     console.error(JSON.stringify({
       event: "observability.validation.failed",
       ...fixtureDetails(),
       stage: currentStage(),
-      message: "Validation setup or execution failed.",
+      operation: setupOperation,
+      error: sanitizeError(error),
     }));
     process.exitCode = 1;
   } finally {
