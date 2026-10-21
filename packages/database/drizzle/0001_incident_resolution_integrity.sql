@@ -1,0 +1,2 @@
+ALTER TABLE "incidents" DROP CONSTRAINT "incidents_resolved_at_check";--> statement-breakpoint
+ALTER TABLE "incidents" ADD CONSTRAINT "incidents_resolved_at_check" CHECK (("incidents"."status" = 'open' and "incidents"."resolved_at" is null) or ("incidents"."status" = 'resolved' and "incidents"."resolved_at" is not null and "incidents"."resolved_at" >= "incidents"."started_at"));

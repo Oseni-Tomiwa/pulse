@@ -114,7 +114,7 @@ export const incidents = pgTable(
     check("incidents_status_check", sql`${table.status} in ('open', 'resolved')`),
     check(
       "incidents_resolved_at_check",
-      sql`${table.status} = 'open' and ${table.resolvedAt} is null or ${table.status} = 'resolved' and ${table.resolvedAt} >= ${table.startedAt}`,
+      sql`(${table.status} = 'open' and ${table.resolvedAt} is null) or (${table.status} = 'resolved' and ${table.resolvedAt} is not null and ${table.resolvedAt} >= ${table.startedAt})`,
     ),
   ],
 );

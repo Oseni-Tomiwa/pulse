@@ -8,6 +8,13 @@
       "when": 1790033796213,
       "tag": "0000_late_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792612732890,
+      "tag": "0001_incident_resolution_integrity",
+      "breakpoints": true
     }
   ]
 }

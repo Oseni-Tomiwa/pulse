@@ -152,7 +152,10 @@ function closeServer(server: Server): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const connectionString = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
+  const connectionString = requireTestDatabaseUrl(
+    process.env.TEST_DATABASE_URL,
+    process.env.DATABASE_URL,
+  );
   const { db, pool } = createDatabase(connectionString);
   const repository = createMonitoringRepository(db);
   const runId = randomUUID();

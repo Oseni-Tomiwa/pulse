@@ -735,6 +735,42 @@ describe("monitor routes", () => {
     },
   );
 
+  it.each(["intervalMs", "timeoutMs", "failureThreshold", "recoveryThreshold"])(
+    "accepts PostgreSQL integer boundaries for %s",
+    async (field) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      for (const value of [1, 2_147_483_647]) {
+        const response = await app(repositories([parentProject], [parentService])).inject({
+          method: "POST",
+          url: `/services/${parentService.id}/monitors`,
+          payload: { name: "API", url: "https://example.com", [field]: value },
+        });
+
+        expect(response.statusCode).toBe(201);
+        expect(response.json()).toMatchObject({ [field]: value });
+      }
+    },
+  );
+
+  it.each(["intervalMs", "timeoutMs", "failureThreshold", "recoveryThreshold"])(
+    "rejects PostgreSQL integer overflow for %s",
+    async (field) => {
+      const parentProject = project("Pulse");
+      const parentService = service(parentProject.id, "API");
+      const response = await app(repositories([parentProject], [parentService])).inject({
+        method: "POST",
+        url: `/services/${parentService.id}/monitors`,
+        payload: { name: "API", url: "https://example.com", [field]: 2_147_483_648 },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: `${field} must be at most 2147483647`,
+      });
+    },
+  );
+
   it.each(["true", 1, null])("rejects invalid enabled value %j", async (enabled) => {
     const parentProject = project("Pulse");
     const parentService = service(parentProject.id, "API");

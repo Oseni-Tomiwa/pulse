@@ -50,6 +50,7 @@ export type AppRepositories = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_HISTORY_LIMIT = 50;
 const MAX_HISTORY_LIMIT = 200;
+const POSTGRES_INTEGER_MAX = 2_147_483_647;
 const UPTIME_WINDOW_MS: Record<UptimeWindow, number> = {
   "24h": 24 * 60 * 60 * 1_000,
   "7d": 7 * 24 * 60 * 60 * 1_000,
@@ -249,6 +250,11 @@ export function buildApp(
         ) {
           return reply.status(400).send({
             error: `${field} must be a positive safe integer`,
+          });
+        }
+        if (value !== undefined && (value as number) > POSTGRES_INTEGER_MAX) {
+          return reply.status(400).send({
+            error: `${field} must be at most ${POSTGRES_INTEGER_MAX}`,
           });
         }
       }

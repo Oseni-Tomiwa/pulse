@@ -11,6 +11,13 @@ describe("requireTestDatabaseUrl", () => {
       .toBe("postgresql://user:pass@db.example.net/pulse_integration");
   });
 
+  it("accepts a dedicated test database when the application database is also configured", () => {
+    expect(requireTestDatabaseUrl(
+      "postgresql://tester:secret@db.example.net/pulse_test",
+      "postgresql://app:secret@db.example.net/pulse",
+    )).toBe("postgresql://tester:secret@db.example.net/pulse_test");
+  });
+
   it("rejects an unmarked or obviously production target", () => {
     expect(() => requireTestDatabaseUrl("postgresql://db.example.net/pulse", undefined)).toThrow("test marker");
     expect(() => requireTestDatabaseUrl("postgresql://prod.example.net/pulse_test", undefined)).toThrow("production");

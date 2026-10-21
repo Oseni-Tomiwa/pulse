@@ -31,6 +31,16 @@ function pgErrorCode(error: unknown): string | undefined {
   return databaseError.code ?? databaseError.cause?.code;
 }
 
+async function expectPgErrorCode(operation: PromiseLike<unknown>, expectedCode: string) {
+  let error: unknown;
+  try {
+    await operation;
+  } catch (caught) {
+    error = caught;
+  }
+  expect(pgErrorCode(error)).toBe(expectedCode);
+}
+
 async function createMonitor(overrides: Partial<typeof monitors.$inferInsert> = {}) {
   if (!fixture) throw new Error("Test fixture is not initialized");
   const id = randomUUID();
@@ -328,6 +338,55 @@ describe("monitoring repository against PostgreSQL", () => {
 
     const [stored] = await db.select().from(incidents).where(eq(incidents.id, resolved!.id));
     expect(stored).toMatchObject({ status: "resolved", resolvedAt });
+  });
+
+  it("enforces incident status and resolution timestamp consistency", async () => {
+    const startedAt = new Date("2026-01-01T12:00:00.000Z");
+
+    const openMonitorId = await createMonitor();
+    await expect(db.insert(incidents).values({
+      id: randomUUID(),
+      monitorId: openMonitorId,
+      status: "open",
+      startedAt,
+      resolvedAt: null,
+    })).resolves.toBeDefined();
+
+    const openWithResolutionMonitorId = await createMonitor();
+    await expectPgErrorCode(db.insert(incidents).values({
+      id: randomUUID(),
+      monitorId: openWithResolutionMonitorId,
+      status: "open",
+      startedAt,
+      resolvedAt: startedAt,
+    }), "23514");
+
+    const resolvedWithoutTimestampMonitorId = await createMonitor();
+    await expectPgErrorCode(db.insert(incidents).values({
+      id: randomUUID(),
+      monitorId: resolvedWithoutTimestampMonitorId,
+      status: "resolved",
+      startedAt,
+      resolvedAt: null,
+    }), "23514");
+
+    const resolvedAtStartMonitorId = await createMonitor();
+    await expect(db.insert(incidents).values({
+      id: randomUUID(),
+      monitorId: resolvedAtStartMonitorId,
+      status: "resolved",
+      startedAt,
+      resolvedAt: startedAt,
+    })).resolves.toBeDefined();
+
+    const resolvedBeforeStartMonitorId = await createMonitor();
+    await expectPgErrorCode(db.insert(incidents).values({
+      id: randomUUID(),
+      monitorId: resolvedBeforeStartMonitorId,
+      status: "resolved",
+      startedAt,
+      resolvedAt: new Date(startedAt.getTime() - 1),
+    }), "23514");
   });
 
   it("enforces selected monitor and health-check CHECK constraints", async () => {

@@ -92,10 +92,10 @@ The current `HttpMonitor` fields are:
 | `kind` | Required; defaults to `http` and is constrained to `http`. |
 | `url` | Required text. |
 | `method` | Required; defaults to `GET`; constrained to `GET` or `HEAD`. |
-| `intervalMs` | Required positive integer; defaults to `60000`. |
-| `timeoutMs` | Required positive integer; defaults to `10000`. |
-| `failureThreshold` | Required positive integer; defaults to `3`. |
-| `recoveryThreshold` | Required positive integer; defaults to `1`. |
+| `intervalMs` | Required integer from `1` through `2147483647`; defaults to `60000`. |
+| `timeoutMs` | Required integer from `1` through `2147483647`; defaults to `10000`. |
+| `failureThreshold` | Required integer from `1` through `2147483647`; defaults to `3`. |
+| `recoveryThreshold` | Required integer from `1` through `2147483647`; defaults to `1`. |
 | `enabled` | Required boolean; defaults to `true`. |
 | `createdAt` | Required timestamp with time zone. |
 
@@ -143,11 +143,11 @@ An Incident is a period when a Monitor is considered unhealthy.
 | `monitorId` | Required foreign key to Monitor. |
 | `status` | Required; constrained to `open` or `resolved`. |
 | `startedAt` | Required timestamp with time zone. |
-| `resolvedAt` | Nullable timestamp; the repository supplies it when resolving an Incident. |
+| `resolvedAt` | Null while open; required when resolved and must be at or after `startedAt`. |
 
 The `incidents(monitor_id, started_at DESC)` index supports Monitor history. Public history is ordered by `startedAt DESC, id DESC`; the ID provides deterministic ordering for equal timestamps. A partial unique index on `monitor_id WHERE status = 'open'` permits at most one open Incident for each Monitor. Repository insertion also uses conflict handling, so a competing open attempt returns no new Incident.
 
-The check constraint rejects an open Incident with a resolution time and rejects a non-null resolution time earlier than `startedAt`. Because PostgreSQL check constraints accept an unknown result, the current expression does not reject a manually inserted `resolved` Incident whose `resolvedAt` is null. The repository always supplies `resolvedAt` during resolution, but the database constraint is weaker than the intended resolved-state invariant.
+The check constraint enforces both valid state shapes: an open Incident has no resolution time, while a resolved Incident has a non-null resolution time at or after `startedAt`.
 
 ## Ownership and deletion
 

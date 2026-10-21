@@ -176,7 +176,7 @@ Response `201`:
 }
 ```
 
-Optional defaults are `GET`, `60000`, `10000`, `3`, `1`, and `true`, respectively. Numeric configuration must be a positive safe integer. URLs must be absolute `http:` or `https:` URLs. Names and URLs are trimmed; methods are exactly `GET` or `HEAD`.
+Optional defaults are `GET`, `60000`, `10000`, `3`, `1`, and `true`, respectively. Numeric configuration must be an integer from `1` through `2147483647`, inclusive. URLs must be absolute `http:` or `https:` URLs. Names and URLs are trimmed; methods are exactly `GET` or `HEAD`.
 
 - Invalid Service UUID: `400`, `{ "error": "Invalid service ID" }`
 - Unknown Service: `404`, `{ "error": "Service not found" }`
