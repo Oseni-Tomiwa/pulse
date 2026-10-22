@@ -61,7 +61,7 @@ Shared domain contracts contain `Date` fields, while their JSON representation c
 
 ## API composition
 
-`buildApp()` accepts Project, Service, Monitor-management, and monitoring-read repository interfaces. Fastify injection tests supply in-memory implementations, so route tests require no database or `DATABASE_URL`.
+`buildApp()` accepts Project, Service, Monitor-management, and monitoring-read repository interfaces. Fastify injection tests supply in-memory implementations, so route tests require no database or `DATABASE_URL`. The Incident diagnostics route delegates its complete bounded result to the monitoring repository and retains the same UUID validation, not-found, and sanitized-error boundary as other resource routes.
 
 The executable `server.ts` creates the PostgreSQL client and concrete repositories only inside `startServer()`. Its direct-execution guard prevents importing the module from starting a server or opening a database connection. `SIGINT` and `SIGTERM` close Fastify and the PostgreSQL pool.
 
@@ -76,8 +76,9 @@ The package exposes focused repositories for:
 - Project management.
 - Service management.
 - Monitoring persistence and incident writes.
+- Bounded Incident diagnostic reads assembled from Monitor-scoped Health Checks.
 
-It does not provide a generic repository framework. The current schema is represented by one generated migration.
+It does not provide a generic repository framework. Incident diagnostics reuse the existing Monitor, Health Check, and Incident tables and indexes; they add no migration.
 
 ## Monitoring engine
 

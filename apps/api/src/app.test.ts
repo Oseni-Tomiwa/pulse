@@ -3,6 +3,7 @@ import type {
   HealthCheck,
   HttpMonitor,
   Incident,
+  IncidentDiagnostics,
   Project,
   Service,
 } from "@pulse/contracts";
@@ -148,6 +149,54 @@ function incident(
   };
 }
 
+function incidentDiagnostics(
+  existingMonitor: HttpMonitor,
+  existingIncident: Incident,
+  overrides: Partial<IncidentDiagnostics> = {},
+): IncidentDiagnostics {
+  const boundaryCheck = healthCheck(
+    existingMonitor.id,
+    "9007199254740993",
+    false,
+    existingIncident.startedAt,
+  );
+  return {
+    incident: existingIncident,
+    monitor: existingMonitor,
+    durationMs: existingIncident.resolvedAt === null
+      ? null
+      : existingIncident.resolvedAt.getTime() - existingIncident.startedAt.getTime(),
+    evidence: {
+      thresholdSource: "current_monitor",
+      opening: {
+        boundary: { match: "exact", checkId: boundaryCheck.id },
+        sequence: {
+          configuredThreshold: existingMonitor.failureThreshold,
+          returnedCount: 1,
+          complete: false,
+          contradictory: false,
+          truncated: false,
+        },
+      },
+      recovery: existingIncident.status === "open" ? null : {
+        boundary: { match: "missing", checkId: null },
+        sequence: {
+          configuredThreshold: existingMonitor.recoveryThreshold,
+          returnedCount: 0,
+          complete: false,
+          contradictory: false,
+          truncated: false,
+        },
+      },
+      during: { truncated: false },
+      checks: [{ ...boundaryCheck, contexts: ["opening"] }],
+      gaps: [],
+      truncated: false,
+    },
+    ...overrides,
+  };
+}
+
 function fakeMonitoringReadRepository(
   initialChecks: HealthCheck[] = [],
   initialIncidents: Incident[] = [],
@@ -168,6 +217,9 @@ function fakeMonitoringReadRepository(
       return initialIncidents.find(
         (candidate) => candidate.monitorId === monitorId && candidate.status === "open",
       ) ?? null;
+    },
+    async getIncidentDiagnosticsById() {
+      return null;
     },
     async getCheckBasedUptimeCounts() {
       return uptimeCounts;
@@ -579,6 +631,194 @@ describe("monitoring read routes", () => {
     const response = await app(dependencies).inject({
       method: "GET",
       url: `/monitors/${existing.id}/checks`,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: "Internal Server Error" });
+    expect(response.body).not.toContain("secret");
+  });
+});
+
+describe("Incident diagnostics route", () => {
+  function dependenciesWithDiagnostics(result: IncidentDiagnostics | null) {
+    const dependencies = repositories();
+    Object.assign(dependencies.monitoring, {
+      async getIncidentDiagnosticsById() {
+        return result;
+      },
+    });
+    return dependencies;
+  }
+
+  it("returns a resolved Incident with serialized duration and diagnostic evidence", async () => {
+    const existingMonitor = monitor(randomUUID(), "API health", {
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+    });
+    const existingIncident = incident(existingMonitor.id, "resolved");
+    const diagnostics = incidentDiagnostics(existingMonitor, existingIncident);
+    const response = await app(dependenciesWithDiagnostics(diagnostics)).inject({
+      method: "GET",
+      url: `/incidents/${existingIncident.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      incident: {
+        id: existingIncident.id,
+        status: "resolved",
+        startedAt: existingIncident.startedAt.toISOString(),
+        resolvedAt: existingIncident.resolvedAt?.toISOString(),
+      },
+      monitor: {
+        id: existingMonitor.id,
+        method: "GET",
+        url: "https://example.com/health",
+      },
+      durationMs: 60_000,
+      evidence: {
+        opening: {
+          boundary: { match: "exact", checkId: "9007199254740993" },
+        },
+        recovery: { boundary: { match: "missing", checkId: null } },
+        checks: [{
+          id: "9007199254740993",
+          errorType: "http_error",
+          errorMessage: "HTTP 500",
+        }],
+      },
+    });
+    expect(typeof response.json().evidence.checks[0].id).toBe("string");
+  });
+
+  it("returns an open Incident with null duration and no recovery boundary", async () => {
+    const existingMonitor = monitor(randomUUID(), "API health");
+    const existingIncident = incident(existingMonitor.id, "open");
+    const response = await app(dependenciesWithDiagnostics(
+      incidentDiagnostics(existingMonitor, existingIncident),
+    )).inject({ method: "GET", url: `/incidents/${existingIncident.id}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      incident: { status: "open", resolvedAt: null },
+      durationMs: null,
+      evidence: { recovery: null },
+    });
+  });
+
+  it("serializes ambiguous and missing boundaries without a fabricated ID", async () => {
+    const existingMonitor = monitor(randomUUID(), "API health");
+    const existingIncident = incident(existingMonitor.id, "resolved");
+    const diagnostics = incidentDiagnostics(existingMonitor, existingIncident);
+    diagnostics.evidence.opening.boundary = { match: "ambiguous", checkId: null };
+    diagnostics.evidence.recovery!.boundary = { match: "missing", checkId: null };
+    const response = await app(dependenciesWithDiagnostics(diagnostics)).inject({
+      method: "GET",
+      url: `/incidents/${existingIncident.id}`,
+    });
+
+    expect(response.json().evidence.opening.boundary).toEqual({
+      match: "ambiguous",
+      checkId: null,
+    });
+    expect(response.json().evidence.recovery.boundary).toEqual({
+      match: "missing",
+      checkId: null,
+    });
+  });
+
+  it("returns 200 with empty evidence for an existing Incident", async () => {
+    const existingMonitor = monitor(randomUUID(), "API health");
+    const existingIncident = incident(existingMonitor.id, "open");
+    const diagnostics = incidentDiagnostics(existingMonitor, existingIncident);
+    diagnostics.evidence.opening.boundary = { match: "missing", checkId: null };
+    diagnostics.evidence.opening.sequence.returnedCount = 0;
+    diagnostics.evidence.checks = [];
+    const response = await app(dependenciesWithDiagnostics(diagnostics)).inject({
+      method: "GET",
+      url: `/incidents/${existingIncident.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().evidence.checks).toEqual([]);
+  });
+
+  it("preserves repository evidence ordering and truncation metadata", async () => {
+    const existingMonitor = monitor(randomUUID(), "API health");
+    const existingIncident = incident(existingMonitor.id, "open");
+    const diagnostics = incidentDiagnostics(existingMonitor, existingIncident);
+    diagnostics.evidence.checks = [
+      { ...healthCheck(existingMonitor.id, "9", false, new Date("2026-01-01T12:00:00Z")), contexts: ["opening"] },
+      { ...healthCheck(existingMonitor.id, "10", false, new Date("2026-01-01T12:00:00Z")), contexts: ["during_start"] },
+    ];
+    diagnostics.evidence.truncated = true;
+    diagnostics.evidence.during.truncated = true;
+    const response = await app(dependenciesWithDiagnostics(diagnostics)).inject({
+      method: "GET",
+      url: `/incidents/${existingIncident.id}`,
+    });
+
+    expect(response.json().evidence.checks.map(({ id }: { id: string }) => id))
+      .toEqual(["9", "10"]);
+    expect(response.json().evidence).toMatchObject({
+      truncated: true,
+      during: { truncated: true },
+    });
+  });
+
+  it("preserves nullable HTTP evidence fields", async () => {
+    const existingMonitor = monitor(randomUUID(), "API health");
+    const existingIncident = incident(existingMonitor.id, "open");
+    const diagnostics = incidentDiagnostics(existingMonitor, existingIncident);
+    diagnostics.evidence.checks = [{
+      ...healthCheck(existingMonitor.id, "11", true),
+      statusCode: null,
+      errorType: null,
+      errorMessage: null,
+      contexts: ["during_start"],
+    }];
+    const response = await app(dependenciesWithDiagnostics(diagnostics)).inject({
+      method: "GET",
+      url: `/incidents/${existingIncident.id}`,
+    });
+
+    expect(response.json().evidence.checks[0]).toMatchObject({
+      statusCode: null,
+      errorType: null,
+      errorMessage: null,
+    });
+  });
+
+  it("returns 400 for a malformed Incident UUID", async () => {
+    const response = await app(dependenciesWithDiagnostics(null)).inject({
+      method: "GET",
+      url: "/incidents/not-a-uuid",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "Invalid incident ID" });
+  });
+
+  it("returns 404 for an unknown Incident UUID", async () => {
+    const response = await app(dependenciesWithDiagnostics(null)).inject({
+      method: "GET",
+      url: `/incidents/${randomUUID()}`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Incident not found" });
+  });
+
+  it("sanitizes unexpected Incident repository failures", async () => {
+    const dependencies = dependenciesWithDiagnostics(null);
+    Object.assign(dependencies.monitoring, {
+      async getIncidentDiagnosticsById() {
+        throw new Error("postgresql://admin:secret@example.invalid/pulse");
+      },
+    });
+    const response = await app(dependencies).inject({
+      method: "GET",
+      url: `/incidents/${randomUUID()}`,
     });
 
     expect(response.statusCode).toBe(500);

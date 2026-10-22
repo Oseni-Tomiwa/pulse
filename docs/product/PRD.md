@@ -122,10 +122,10 @@ Check-based uptime is the proportion of persisted Health Checks that are healthy
 
 ### Dashboard expectations
 
-The Project, Service, and Monitor web workflows are implemented. Monitor Details exposes current probe evidence, open-Incident state, check-based uptime, and bounded check and Incident histories as independent resources. Remaining product views planned for v0.1 should expose:
+The Project, Service, and Monitor web workflows are implemented. Monitor Details exposes current probe evidence, open-Incident state, check-based uptime, and bounded check and Incident histories as independent resources. The backend now exposes bounded Incident diagnostics using persisted HTTP evidence, honest boundary uncertainty, and current Monitor thresholds; the Incident Details web experience remains a separate implementation pass. Remaining product views planned for v0.1 should expose:
 
 - Derived Service-level health when its aggregation semantics are defined.
-- Incident detail context around the recorded HTTP evidence.
+- Incident detail context around the recorded HTTP evidence through the approved frontend experience.
 - A richer latency-history presentation without inventing unavailable diagnostics.
 
 ## Release criteria

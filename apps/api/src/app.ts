@@ -2,6 +2,7 @@ import type {
   HealthCheck,
   HttpMonitor,
   Incident,
+  IncidentDiagnostics,
   MonitorUptime,
   MonitorStatus,
   Project,
@@ -33,6 +34,7 @@ export type MonitoringReadRepository = {
   getRecentHealthChecks(monitorId: string, limit: number): Promise<HealthCheck[]>;
   getRecentIncidents(monitorId: string, limit: number): Promise<Incident[]>;
   getOpenIncident(monitorId: string): Promise<Incident | null>;
+  getIncidentDiagnosticsById(incidentId: string): Promise<IncidentDiagnostics | null>;
   getCheckBasedUptimeCounts(
     monitorId: string,
     from: Date,
@@ -389,6 +391,23 @@ export function buildApp(
     }
     return monitoringRepository.getRecentIncidents(monitorId, limit);
   });
+
+  app.get<{ Params: { incidentId: string } }>(
+    "/incidents/:incidentId",
+    async (request, reply) => {
+      const { incidentId } = request.params;
+      if (!UUID_PATTERN.test(incidentId)) {
+        return reply.status(400).send({ error: "Invalid incident ID" });
+      }
+      const diagnostics = await monitoringRepository.getIncidentDiagnosticsById(
+        incidentId,
+      );
+      if (!diagnostics) {
+        return reply.status(404).send({ error: "Incident not found" });
+      }
+      return diagnostics;
+    },
+  );
 
   app.get<{ Params: { monitorId: string } }>(
     "/monitors/:monitorId/status",

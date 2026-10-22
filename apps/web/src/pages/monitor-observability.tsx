@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import type { UptimeWindow } from "@pulse/contracts";
 import type {
   HealthCheckResponse,
@@ -209,6 +210,7 @@ function IncidentsSection({ apiClient, monitorId }: { apiClient: PulseApiClient;
                 <span>Started {formatDate(incident.startedAt)}</span>
               </div>
               {incident.resolvedAt ? <p>Resolved at {formatDate(incident.resolvedAt)}</p> : null}
+              <Link className="text-link diagnostic-link" to={"/incidents/" + encodeURIComponent(incident.id)}>View diagnostics</Link>
             </article>
           ))}
         </div>

@@ -117,3 +117,27 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline
 @media (prefers-reduced-motion: reduce) {
   .loading-indicator { animation: none; }
 }
+
+/* Incident diagnostics reuses the Monitor evidence and configuration primitives. */
+.diagnostic-link { margin-top: 0; justify-self: start; padding-block: .65rem; }
+.incident-summary-grid { margin-top: 0; box-shadow: none; }
+.diagnostic-config-note { margin: 1rem 0 0; color: var(--text-muted); font-size: .875rem; line-height: 1.6; }
+.diagnostic-boundaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1rem; }
+.diagnostic-boundary { min-width: 0; padding: 1.25rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
+.diagnostic-boundary h2 { margin: 0 0 .75rem; font-size: 1.125rem; }
+.diagnostic-boundary p { margin: .75rem 0 0; line-height: 1.6; }
+.diagnostic-warning { border-inline-start: 4px solid var(--accent); background: var(--surface-muted); }
+.diagnostic-timeline { display: grid; gap: .85rem; margin: 1.25rem 0 0; padding: 0 0 0 1rem; border-inline-start: 2px solid var(--border); list-style: none; }
+.diagnostic-check { min-width: 0; position: relative; }
+.diagnostic-check::before { content: ""; position: absolute; inset-inline-start: -1.4rem; top: 1.4rem; width: .65rem; height: .65rem; border: 2px solid var(--border); border-radius: 50%; background: var(--surface); }
+.diagnostic-check time { font-size: .875rem; color: var(--text-muted); }
+.diagnostic-contexts { display: flex; flex-wrap: wrap; gap: .4rem; padding: 0; margin: 0; list-style: none; }
+.diagnostic-contexts li { padding: .25rem .5rem; border-radius: .35rem; background: var(--surface-muted); color: var(--text-muted); font-size: .8rem; }
+.diagnostic-check .evidence-fields > div { min-width: 0; max-width: 100%; }
+.diagnostic-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diagnostic-gap { display: grid; gap: .35rem; padding: .85rem 1rem; border-block: 1px dashed var(--border); color: var(--text-muted); font-size: .875rem; }
+.incident-diagnostics .configuration-note p { margin-bottom: 0; }
+:root[data-theme="dark"] .incident-diagnostics .state-open,
+:root[data-theme="dark"] .incident-diagnostics .state-unhealthy { color: #ffabab; }
+:root[data-theme="dark"] .incident-diagnostics .state-resolved,
+:root[data-theme="dark"] .incident-diagnostics .state-healthy { color: #8ee0b4; }

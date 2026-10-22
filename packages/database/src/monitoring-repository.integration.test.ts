@@ -56,6 +56,38 @@ async function createMonitor(overrides: Partial<typeof monitors.$inferInsert> = 
   return id;
 }
 
+async function createIncident(
+  monitorId: string,
+  startedAt: Date,
+  resolvedAt: Date | null,
+) {
+  const id = randomUUID();
+  await db.insert(incidents).values({
+    id,
+    monitorId,
+    status: resolvedAt === null ? "open" : "resolved",
+    startedAt,
+    resolvedAt,
+  });
+  return id;
+}
+
+async function createCheck(
+  monitorId: string,
+  checkedAt: Date,
+  healthy: boolean,
+) {
+  return repository.insertHealthCheck({
+    monitorId,
+    healthy,
+    statusCode: healthy ? 204 : 500,
+    latencyMs: 12,
+    checkedAt,
+    errorType: healthy ? null : "http_error",
+    errorMessage: healthy ? null : "HTTP 500",
+  });
+}
+
 beforeAll(async () => {
   const testUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
   ({ db, pool } = createDatabase(testUrl));
@@ -410,6 +442,193 @@ describe("monitoring repository against PostgreSQL", () => {
       latencyError = caught;
     }
     expect(pgErrorCode(latencyError)).toBe("23514");
+  });
+
+  it("returns complete resolved opening, middle, recovery, and post-resolution evidence", async () => {
+    const monitorId = await createMonitor({ failureThreshold: 3, recoveryThreshold: 2 });
+    const startedAt = new Date("2026-03-01T12:03:00.000Z");
+    const resolvedAt = new Date("2026-03-01T12:20:00.000Z");
+    const predecessorId = await createCheck(
+      monitorId,
+      new Date("2026-03-01T12:00:00.000Z"),
+      true,
+    );
+    const openingIds = [
+      await createCheck(monitorId, new Date("2026-03-01T12:01:00.000Z"), false),
+      await createCheck(monitorId, new Date("2026-03-01T12:02:00.000Z"), false),
+      await createCheck(monitorId, startedAt, false),
+    ];
+    const duringIds: string[] = [];
+    for (let minute = 4; minute <= 18; minute += 1) {
+      duringIds.push(await createCheck(
+        monitorId,
+        new Date(`2026-03-01T12:${String(minute).padStart(2, "0")}:00.000Z`),
+        false,
+      ));
+    }
+    const recoveryIds = [
+      await createCheck(monitorId, new Date("2026-03-01T12:19:00.000Z"), true),
+      await createCheck(monitorId, resolvedAt, true),
+    ];
+    const postId = await createCheck(
+      monitorId,
+      new Date("2026-03-01T12:21:00.000Z"),
+      true,
+    );
+    const incidentId = await createIncident(monitorId, startedAt, resolvedAt);
+
+    const result = await repository.getIncidentDiagnosticsById(incidentId);
+
+    expect(result).not.toBeNull();
+    expect(result?.durationMs).toBe(17 * 60_000);
+    expect(result?.evidence.opening).toMatchObject({
+      boundary: { match: "exact", checkId: openingIds[2] },
+      sequence: { returnedCount: 3, complete: true, contradictory: false },
+    });
+    expect(result?.evidence.recovery).toMatchObject({
+      boundary: { match: "exact", checkId: recoveryIds[1] },
+      sequence: { returnedCount: 2, complete: true, contradictory: false },
+    });
+    expect(result?.evidence.checks.map(({ id }) => id)).toEqual([
+      predecessorId,
+      ...openingIds,
+      ...duringIds.slice(0, 5),
+      ...duringIds.slice(-5),
+      ...recoveryIds,
+      postId,
+    ]);
+    expect(new Set(result?.evidence.checks.map(({ id }) => id)).size)
+      .toBe(result?.evidence.checks.length);
+    expect(result?.evidence.gaps).toHaveLength(1);
+    expect(result?.evidence.during.truncated).toBe(true);
+  });
+
+  it("returns bounded open-Incident first/latest evidence without reinterpreting state", async () => {
+    const monitorId = await createMonitor({ failureThreshold: 2, recoveryThreshold: 2 });
+    const startedAt = new Date("2026-03-02T12:02:00.000Z");
+    const predecessorId = await createCheck(
+      monitorId,
+      new Date("2026-03-02T12:00:00.000Z"),
+      true,
+    );
+    const openingIds = [
+      await createCheck(monitorId, new Date("2026-03-02T12:01:00.000Z"), false),
+      await createCheck(monitorId, startedAt, false),
+    ];
+    const afterIds: string[] = [];
+    for (let minute = 3; minute <= 9; minute += 1) {
+      afterIds.push(await createCheck(
+        monitorId,
+        new Date(`2026-03-02T12:${String(minute).padStart(2, "0")}:00.000Z`),
+        minute === 9,
+      ));
+    }
+    const incidentId = await createIncident(monitorId, startedAt, null);
+
+    const result = await repository.getIncidentDiagnosticsById(incidentId);
+
+    expect(result?.durationMs).toBeNull();
+    expect(result?.evidence.recovery).toBeNull();
+    expect(result?.evidence.checks.map(({ id }) => id)).toEqual([
+      predecessorId,
+      ...openingIds,
+      ...afterIds,
+    ]);
+    expect(new Set(result?.evidence.checks.map(({ id }) => id)).size)
+      .toBe(result?.evidence.checks.length);
+    expect(result?.evidence.during.truncated).toBe(false);
+    expect(result?.incident.status).toBe("open");
+  });
+
+  it("uses numeric ID ordering and reports ambiguous opening and recovery timestamps", async () => {
+    const monitorId = await createMonitor({ failureThreshold: 2, recoveryThreshold: 2 });
+    const startedAt = new Date("2026-03-03T12:00:00.000Z");
+    const resolvedAt = new Date("2026-03-03T12:01:00.000Z");
+    const openingIds = [
+      await createCheck(monitorId, startedAt, false),
+      await createCheck(monitorId, startedAt, false),
+    ];
+    const recoveryIds = [
+      await createCheck(monitorId, resolvedAt, true),
+      await createCheck(monitorId, resolvedAt, true),
+    ];
+    const incidentId = await createIncident(monitorId, startedAt, resolvedAt);
+
+    const result = await repository.getIncidentDiagnosticsById(incidentId);
+
+    expect(result?.evidence.opening.boundary).toEqual({ match: "ambiguous", checkId: null });
+    expect(result?.evidence.recovery?.boundary).toEqual({ match: "ambiguous", checkId: null });
+    expect(result?.evidence.checks.map(({ id }) => id)).toEqual([
+      ...openingIds,
+      ...recoveryIds,
+    ]);
+    expect(BigInt(openingIds[0]!)).toBeLessThan(BigInt(openingIds[1]!));
+  });
+
+  it("returns sparse or missing evidence and never crosses Monitor boundaries", async () => {
+    const monitorId = await createMonitor({ failureThreshold: 3, recoveryThreshold: 2 });
+    const otherMonitorId = await createMonitor();
+    const startedAt = new Date("2026-03-04T12:00:00.000Z");
+    const resolvedAt = new Date("2026-03-04T12:10:00.000Z");
+    const sparseId = await createCheck(
+      monitorId,
+      new Date("2026-03-04T12:05:00.000Z"),
+      false,
+    );
+    await createCheck(otherMonitorId, startedAt, false);
+    await createCheck(otherMonitorId, resolvedAt, true);
+    const incidentId = await createIncident(monitorId, startedAt, resolvedAt);
+
+    const result = await repository.getIncidentDiagnosticsById(incidentId);
+
+    expect(result?.evidence.opening).toMatchObject({
+      boundary: { match: "missing", checkId: null },
+      sequence: { complete: false },
+    });
+    expect(result?.evidence.recovery).toMatchObject({
+      boundary: { match: "missing", checkId: null },
+      sequence: { complete: false },
+    });
+    expect(result?.evidence.checks.map(({ id }) => id)).toEqual([sparseId]);
+    expect(result?.evidence.checks.every((check) => check.monitorId === monitorId)).toBe(true);
+    expect(await repository.getIncidentDiagnosticsById(randomUUID())).toBeNull();
+  });
+
+  it("bounds long-running high-threshold Incidents at 64 checks and marks truncation", async () => {
+    const monitorId = await createMonitor({ failureThreshold: 40, recoveryThreshold: 40 });
+    const startedAt = new Date("2026-03-05T12:39:00.000Z");
+    const resolvedAt = new Date("2026-03-06T12:39:00.000Z");
+    for (let minute = 0; minute < 40; minute += 1) {
+      await createCheck(
+        monitorId,
+        new Date(Date.parse("2026-03-05T12:00:00.000Z") + minute * 60_000),
+        false,
+      );
+    }
+    for (let minute = 1; minute <= 70; minute += 1) {
+      await createCheck(
+        monitorId,
+        new Date(startedAt.getTime() + minute * 10 * 60_000),
+        false,
+      );
+    }
+    for (let minute = 39; minute >= 0; minute -= 1) {
+      await createCheck(
+        monitorId,
+        new Date(resolvedAt.getTime() - minute * 60_000),
+        true,
+      );
+    }
+    await createCheck(monitorId, new Date(resolvedAt.getTime() + 60_000), true);
+    const incidentId = await createIncident(monitorId, startedAt, resolvedAt);
+
+    const result = await repository.getIncidentDiagnosticsById(incidentId);
+
+    expect(result?.evidence.checks.length).toBeLessThanOrEqual(64);
+    expect(result?.evidence.truncated).toBe(true);
+    expect(result?.evidence.opening.sequence.truncated).toBe(true);
+    expect(result?.evidence.recovery?.sequence.truncated).toBe(true);
+    expect(result?.evidence.gaps.length).toBeGreaterThan(0);
   });
 });
 

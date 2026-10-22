@@ -71,3 +71,56 @@ export type Incident = {
   startedAt: Date;
   resolvedAt: Date | null;
 };
+
+export type IncidentBoundaryMatch =
+  | { match: "exact"; checkId: string }
+  | { match: "ambiguous"; checkId: null }
+  | { match: "missing"; checkId: null };
+
+export type IncidentEvidenceContext =
+  | "opening_predecessor"
+  | "opening"
+  | "during_start"
+  | "during_end"
+  | "recovery"
+  | "post_recovery";
+
+export type IncidentDiagnosticCheck = HealthCheck & {
+  contexts: IncidentEvidenceContext[];
+};
+
+export type IncidentThresholdEvidence = {
+  configuredThreshold: number;
+  returnedCount: number;
+  complete: boolean;
+  contradictory: boolean;
+  truncated: boolean;
+};
+
+export type IncidentEvidenceGap = {
+  afterCheckId: string;
+  beforeCheckId: string;
+};
+
+export type IncidentDiagnosticEvidence = {
+  thresholdSource: "current_monitor";
+  opening: {
+    boundary: IncidentBoundaryMatch;
+    sequence: IncidentThresholdEvidence;
+  };
+  recovery: {
+    boundary: IncidentBoundaryMatch;
+    sequence: IncidentThresholdEvidence;
+  } | null;
+  during: { truncated: boolean };
+  checks: IncidentDiagnosticCheck[];
+  gaps: IncidentEvidenceGap[];
+  truncated: boolean;
+};
+
+export type IncidentDiagnostics = {
+  incident: Incident;
+  monitor: HttpMonitor;
+  durationMs: number | null;
+  evidence: IncidentDiagnosticEvidence;
+};

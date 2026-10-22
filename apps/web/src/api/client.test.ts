@@ -302,6 +302,13 @@ describe("createPulseApiClient", () => {
     );
   });
 
+  it("requests diagnostics with an encoded Incident ID and forwards cancellation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 200 }));
+    const signal = new AbortController().signal;
+    await createPulseApiClient({ fetchImpl }).getIncidentDiagnostics("incident/id", { signal });
+    expect(fetchImpl).toHaveBeenCalledWith("/api/incidents/incident%2Fid", expect.objectContaining({ signal }));
+  });
+
   it("throws a safe ApiError from a JSON API error", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ error: "Project not found" }), {

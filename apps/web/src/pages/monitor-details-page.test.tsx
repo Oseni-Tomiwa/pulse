@@ -1,3 +1,4 @@
+import { transferableAbortController } from "node:util";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
@@ -105,6 +106,7 @@ function fakeClient(overrides: Partial<PulseApiClient> = {}): PulseApiClient {
     getMonitorStatus: vi.fn().mockResolvedValue(status),
     getMonitorUptime: vi.fn().mockResolvedValue(uptime),
     listHealthChecks: vi.fn().mockResolvedValue([healthyCheck, failedCheck]),
+    getIncidentDiagnostics: vi.fn(),
     listIncidents: vi.fn().mockResolvedValue([openIncident, resolvedIncident]),
     ...overrides,
   };
@@ -263,6 +265,27 @@ describe("MonitorDetailsPage", () => {
     expect(rows[1]).toHaveTextContent("Resolved at");
     expect(screen.queryByText(/severity/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/root cause/i)).not.toBeInTheDocument();
+  });
+
+  it("links every Incident history entry to diagnostics and navigates on activation", async () => {
+    // React Router uses Node's Request, which requires a native AbortSignal.
+    vi.stubGlobal("AbortController", transferableAbortController);
+    try {
+      const getIncidentDiagnostics = vi.fn(() => new Promise<never>(() => {}));
+      const view = renderDetails(fakeClient({ getIncidentDiagnostics }));
+      const links = await screen.findAllByRole("link", { name: "View diagnostics" });
+      expect(links.map(link => link.getAttribute("href"))).toEqual([
+        "/incidents/" + openIncident.id, "/incidents/" + resolvedIncident.id,
+      ]);
+      await userEvent.click(links[0]!);
+      expect(await screen.findByRole("status")).toHaveTextContent("Loading incident diagnostics");
+      expect(getIncidentDiagnostics).toHaveBeenCalledWith(openIncident.id, expect.objectContaining({
+        signal: expect.objectContaining({ aborted: false }),
+      }));
+      view.unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("isolates section failures and retries only the failed resource", async () => {

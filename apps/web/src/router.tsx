@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 import { createPulseApiClient, type PulseApiClient } from "./api/client";
 import { AppShell } from "./layout/app-shell";
+import { IncidentDetailsPage } from "./pages/incident-details-page";
 import { MonitorDetailsPage } from "./pages/monitor-details-page";
 import { NotFoundPage } from "./pages/not-found-page";
 import { OverviewPage } from "./pages/overview-page";
@@ -21,6 +22,7 @@ function createRoutes(apiClient: PulseApiClient): RouteObject[] {
       { path: "projects", element: <ProjectsPage apiClient={apiClient} /> },
       { path: "projects/:projectId", element: <ProjectDetailsPage apiClient={apiClient} /> },
       { path: "services/:serviceId", element: <ServiceDetailsPage apiClient={apiClient} /> },
+      { path: "incidents/:incidentId", element: <IncidentDetailsPage apiClient={apiClient} /> },
       { path: "monitors/:monitorId", element: <MonitorDetailsPage apiClient={apiClient} /> },
       { path: "*", element: <NotFoundPage /> },
     ],

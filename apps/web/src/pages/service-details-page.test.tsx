@@ -59,6 +59,7 @@ function fakeClient(overrides: Partial<PulseApiClient> = {}): PulseApiClient {
     getMonitorStatus: vi.fn(),
     getMonitorUptime: vi.fn(),
     listHealthChecks: vi.fn().mockResolvedValue([]),
+    getIncidentDiagnostics: vi.fn(),
     listIncidents: vi.fn().mockResolvedValue([]),
     ...overrides,
   };

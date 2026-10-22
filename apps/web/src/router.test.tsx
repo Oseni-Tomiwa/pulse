@@ -43,6 +43,7 @@ const apiClient: PulseApiClient = {
   }),
   listHealthChecks: async () => [],
   listIncidents: async () => [],
+  getIncidentDiagnostics: async () => { throw new Error("not used"); },
 };
 
 function renderRoute(path: string) {

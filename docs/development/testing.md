@@ -26,6 +26,7 @@ These suites verify:
 
 - HTTP result classification and timeout behavior.
 - Pure incident thresholds and streak resets.
+- Pure Incident diagnostic evidence assembly, including boundary uncertainty, deduplication, numeric bigint ordering, integrity, gaps, and the 64-check cap.
 - One-Monitor orchestration and persistence call ordering.
 - Database client lifecycle and integration-database safety validation without opening a PostgreSQL connection.
 - Fastify Project, Service, validation, not-found, error-sanitization, and health behavior through injection.
@@ -42,9 +43,9 @@ Set `TEST_DATABASE_URL` to a dedicated test database, then run:
 pnpm --filter @pulse/database test:integration
 ```
 
-The suite applies the actual generated Drizzle migration before testing repository behavior. It verifies due-Monitor discovery, Health Check persistence and ordering, check-based uptime aggregation boundaries, Incident uniqueness and resolution, selected database constraints, and Project and Service repositories.
+The suite applies the actual generated Drizzle migrations before testing repository behavior. It verifies due-Monitor discovery, Health Check persistence and ordering, check-based uptime aggregation boundaries, Incident uniqueness and resolution, selected database constraints, bounded Incident diagnostic evidence semantics, and Project and Service repositories.
 
-The current suite contains fourteen integration tests. Twelve were present before this milestone; the two new check-based uptime cases remain unexecuted. The command is deliberately separate from the normal database-free suite.
+The command is deliberately separate from the normal database-free suite. Incident diagnostic integration cases cover resolved and open windows, multi-check thresholds, boundary ambiguity or absence, sparse and foreign-Monitor evidence, deterministic numeric-ID ordering, overlap deduplication, and high-threshold truncation.
 
 ### Safety guard
 

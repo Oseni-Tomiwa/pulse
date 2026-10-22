@@ -149,6 +149,10 @@ The `incidents(monitor_id, started_at DESC)` index supports Monitor history. Pub
 
 The check constraint enforces both valid state shapes: an open Incident has no resolution time, while a resolved Incident has a non-null resolution time at or after `startedAt`.
 
+Incident diagnostics do not add persisted columns or foreign keys. The detail repository joins an Incident to its owning Monitor, then issues bounded Monitor-scoped Health Check queries around `startedAt` and `resolvedAt`. Timestamp matches can be exact, ambiguous, or missing because Incidents do not store the triggering Health Check ID. Evidence is deduplicated and returned chronologically by `checkedAt ASC, id ASC`, with bigint comparison remaining numeric in PostgreSQL and pure assembly.
+
+The response uses the Monitor's current failure and recovery thresholds to select boundary sequences. Thresholds and other Monitor settings are not snapshotted on Incident rows, so diagnostics explicitly identify the configuration source as `current_monitor`. The maximum response is 64 checks; truncation and known gaps are represented as metadata rather than implying a contiguous history. This changes query and API behavior only and requires no schema migration.
+
 ## Ownership and deletion
 
 The ownership chain is:
