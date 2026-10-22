@@ -124,3 +124,38 @@ export type IncidentDiagnostics = {
   durationMs: number | null;
   evidence: IncidentDiagnosticEvidence;
 };
+
+export type ServiceHealthState = "healthy" | "degraded" | "down" | "unknown";
+
+export type ServiceHealth = {
+  serviceId: string;
+  state: ServiceHealthState;
+  monitors: {
+    total: number;
+    enabled: number;
+    reporting: number;
+    healthy: number;
+    unhealthy: number;
+    unknown: number;
+    disabled: number;
+  };
+  coverage: { reporting: number; enabled: number };
+};
+
+export type ServiceHealthSummary = {
+  service: Pick<Service, "id" | "name" | "projectId">;
+  project: Pick<Project, "id" | "name">;
+  health: ServiceHealth;
+};
+
+export type Overview = {
+  totals: {
+    projects: number;
+    services: number;
+    monitors: number;
+    enabledMonitors: number;
+    openIncidents: number;
+  };
+  serviceHealth: Record<ServiceHealthState, number>;
+  attention: ServiceHealthSummary[];
+};

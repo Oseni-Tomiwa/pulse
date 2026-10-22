@@ -4,6 +4,8 @@ import type {
   Incident,
   IncidentDiagnostics,
   MonitorUptime,
+  Overview,
+  ServiceHealth,
   MonitorStatus,
   Project,
   Service,
@@ -42,11 +44,17 @@ export type MonitoringReadRepository = {
   ): Promise<{ totalChecks: number; healthyChecks: number }>;
 };
 
+export type HealthReadRepository = {
+  getServiceHealth(serviceId: string): Promise<ServiceHealth | null>;
+  getOverview(): Promise<Overview>;
+};
+
 export type AppRepositories = {
   projects: ProjectRepository;
   services: ServiceRepository;
   monitors: MonitorRepository;
   monitoring: MonitoringReadRepository;
+  health: HealthReadRepository;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -91,6 +99,7 @@ export function buildApp(
     services: serviceRepository,
     monitors: monitorRepository,
     monitoring: monitoringRepository,
+    health: healthRepository,
   } = repositories;
 
   app.setErrorHandler((error, request, reply) => {
@@ -106,6 +115,21 @@ export function buildApp(
     status: "ok",
     service: "pulse-api",
   }));
+
+  app.get("/overview", async () => healthRepository.getOverview());
+
+  app.get<{ Params: { serviceId: string } }>(
+    "/services/:serviceId/health",
+    async (request, reply) => {
+      const { serviceId } = request.params;
+      if (!UUID_PATTERN.test(serviceId)) {
+        return reply.status(400).send({ error: "Invalid service ID" });
+      }
+      const health = await healthRepository.getServiceHealth(serviceId);
+      if (!health) return reply.status(404).send({ error: "Service not found" });
+      return health;
+    },
+  );
 
   app.post("/projects", async (request, reply) => {
     const body = request.body as { name?: unknown } | null;

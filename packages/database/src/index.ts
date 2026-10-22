@@ -6,3 +6,5 @@ export * from "./incident-diagnostics.js";
 export * from "./monitor-repository.js";
 export * from "./project-repository.js";
 export * from "./service-repository.js";
+export * from "./service-health.js";
+export * from "./health-repository.js";

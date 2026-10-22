@@ -403,3 +403,61 @@ Response `200`:
 ## Planned v0.1 API
 
 The v0.1 product still needs higher-level Service status presentation. Its exact route shape is intentionally not specified yet.
+
+## Service Health and Overview (M7 backend)
+
+### `GET /services/:serviceId/health`
+
+Returns derived `ServiceHealth` for an existing Service. Malformed UUIDs return
+`400`, missing Services return `404`, and unexpected failures return the existing
+sanitized `500` response. A Service with no Monitors is a valid `200` with unknown
+health and zero counts.
+
+```json
+{
+  "serviceId": "29962974-50bb-4213-9e15-bbbe78747e22",
+  "state": "healthy",
+  "monitors": {
+    "total": 3,
+    "enabled": 2,
+    "reporting": 1,
+    "healthy": 1,
+    "unhealthy": 0,
+    "unknown": 1,
+    "disabled": 1
+  },
+  "coverage": { "reporting": 1, "enabled": 2 }
+}
+```
+
+Disabled Monitors contribute only to `total` and `disabled`. Each enabled Monitor
+is classified from its latest persisted HealthCheck, using the same
+`checkedAt DESC, id DESC` ordering as Monitor status (numeric bigint IDs).
+No check means unknown; a healthy/unhealthy check means healthy/unhealthy.
+`reporting` is healthy plus unhealthy. No enabled or reporting Monitors means
+unknown Service Health. Otherwise, reporting Monitors that are all healthy mean
+healthy; all unhealthy mean down; a mix means degraded. Unknown Monitors reduce
+coverage but do not independently degrade health. No historical averaging,
+staleness, or Incident lifecycle inference is applied.
+
+### `GET /overview`
+
+Returns the shared `Overview` contract:
+
+- `totals`: projects, services, monitors, enabledMonitors, openIncidents.
+- `serviceHealth`: counts of healthy, degraded, down, and unknown Services.
+- `attention`: only down, degraded, and unknown Services. Each entry contains
+  `service: { id, name, projectId }`, `project: { id, name }`, and the same `health`
+  payload returned by the Service Health endpoint.
+
+Attention is ordered down, degraded, then unknown. Ties use ascending Service
+name, then ascending Service ID with a locale-independent JavaScript string
+comparison. Healthy Services are excluded. Projects without Services and Services
+without Monitors remain included in their respective totals. The open-Incident
+total includes all currently open Incidents, including those belonging to disabled
+Monitors; it does not determine Service Health.
+
+Overview reads counts and observations from one read-only repeatable-read
+snapshot. It is unpaginated. Unexpected failures use the sanitized `500` response.
+These endpoints do not persist health, modify schema, or provide M8 freshness/live
+semantics.

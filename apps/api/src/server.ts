@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createDatabase,
+  createHealthRepository,
   createMonitorRepository,
   createMonitoringRepository,
   createProjectRepository,
@@ -17,6 +18,7 @@ export async function startServer(): Promise<void> {
     services: createServiceRepository(db),
     monitors: createMonitorRepository(db),
     monitoring: monitoringRepository,
+    health: createHealthRepository(db),
   });
   let shuttingDown = false;
 

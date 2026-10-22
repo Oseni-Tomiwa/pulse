@@ -236,6 +236,13 @@ function repositories(
   uptimeCounts = { totalChecks: 0, healthyChecks: 0 },
 ): AppRepositories {
   return {
+    health: {
+      async getServiceHealth() { return null; },
+      async getOverview() {
+        return { totals: { projects: 0, services: 0, monitors: 0, enabledMonitors: 0, openIncidents: 0 },
+          serviceHealth: { healthy: 0, degraded: 0, down: 0, unknown: 0 }, attention: [] };
+      },
+    },
     projects: fakeProjectRepository(initialProjects),
     services: fakeServiceRepository(initialServices),
     monitors: fakeMonitorRepository(initialMonitors),
