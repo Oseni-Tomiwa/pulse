@@ -1,3 +1,4 @@
+import { emptyHealth, emptyOverview } from "./test/m7-fixtures";
 import { render, screen } from "@testing-library/react";
 import { RouterProvider } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -6,6 +7,8 @@ import { createAppRouter } from "./router";
 import { ThemeProvider } from "./theme/theme-provider";
 
 const apiClient: PulseApiClient = {
+  getOverview: async () => emptyOverview,
+  getServiceHealth: async (serviceId) => emptyHealth(serviceId),
   listProjects: async () => [],
   getProject: async () => ({
     id: "123",

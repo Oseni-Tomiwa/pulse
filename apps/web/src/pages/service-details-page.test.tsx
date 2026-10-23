@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { emptyHealth, emptyOverview } from "../test/m7-fixtures";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -47,6 +48,8 @@ function deferred<T>() {
 
 function fakeClient(overrides: Partial<PulseApiClient> = {}): PulseApiClient {
   return {
+    getOverview: vi.fn().mockResolvedValue(emptyOverview),
+    getServiceHealth: vi.fn().mockImplementation(async (serviceId: string) => emptyHealth(serviceId)),
     listProjects: vi.fn().mockResolvedValue([]),
     getProject: vi.fn().mockResolvedValue(project),
     createProject: vi.fn().mockResolvedValue(project),
@@ -56,7 +59,7 @@ function fakeClient(overrides: Partial<PulseApiClient> = {}): PulseApiClient {
     listMonitors: vi.fn().mockResolvedValue([]),
     createMonitor: vi.fn(),
     getMonitor: vi.fn(),
-    getMonitorStatus: vi.fn(),
+    getMonitorStatus: vi.fn().mockImplementation(async (monitorId: string) => ({ monitorId, probeStatus: "unknown", latestCheck: null, openIncident: null })),
     getMonitorUptime: vi.fn(),
     listHealthChecks: vi.fn().mockResolvedValue([]),
     getIncidentDiagnostics: vi.fn(),
@@ -133,7 +136,7 @@ describe("ServiceDetailsPage", () => {
     const pending = deferred<MonitorResponse[]>();
     renderDetails(fakeClient({ listMonitors: vi.fn(() => pending.promise) }));
     expect(await screen.findByRole("heading", { name: "API" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Loading monitors");
+    expect(within(screen.getByRole("region", { name: "Monitors" })).getByRole("status")).toHaveTextContent("Loading monitors");
     expect(screen.queryByRole("button", { name: "Create Monitor" })).not.toBeInTheDocument();
   });
 
@@ -238,6 +241,23 @@ describe("ServiceDetailsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create monitor" }));
     expect(await screen.findByText("Internal Server Error")).toBeInTheDocument();
     expect(name).toHaveValue("Production API");
+  });
+
+  it("refetches authoritative Service Health after Monitor creation", async () => {
+    const getServiceHealth = vi.fn().mockResolvedValueOnce(emptyHealth(service.id)).mockResolvedValueOnce({
+      serviceId: service.id, state: "unknown",
+      monitors: { total: 1, enabled: 1, reporting: 0, healthy: 0, unhealthy: 0, unknown: 1, disabled: 0 },
+      coverage: { reporting: 0, enabled: 1 },
+    });
+    renderDetails(fakeClient({ createMonitor: vi.fn().mockResolvedValue(monitor), getServiceHealth }));
+    await screen.findByText("No monitors yet");
+    await userEvent.click(screen.getByRole("button", { name: "Create Monitor" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Monitor name" }), "Production API");
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://example.com/health");
+    await userEvent.click(screen.getByRole("button", { name: "Create monitor" }));
+    expect(await screen.findByText("0 / 1")).toBeInTheDocument();
+    expect(getServiceHealth).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("link", { name: /Production API/ })).toBeInTheDocument();
   });
 
   it("aborts Monitor collection loading when unmounted", async () => {

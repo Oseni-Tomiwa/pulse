@@ -5,6 +5,8 @@ import type {
   IncidentDiagnostics,
   MonitorStatus,
   MonitorUptime,
+  Overview,
+  ServiceHealth,
   Project,
   Service,
   UptimeWindow,
@@ -20,6 +22,8 @@ export type PulseApiClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
+export type OverviewResponse = JsonResponse<Overview>;
+export type ServiceHealthResponse = JsonResponse<ServiceHealth>;
 export type ProjectResponse = JsonResponse<Project>;
 export type ServiceResponse = JsonResponse<Service>;
 export type MonitorResponse = JsonResponse<HttpMonitor>;
@@ -54,6 +58,8 @@ export type CreateMonitorInput = {
 };
 
 export type PulseApiClient = {
+  getOverview(options?: RequestOptions): Promise<OverviewResponse>;
+  getServiceHealth(serviceId: string, options?: RequestOptions): Promise<ServiceHealthResponse>;
   getIncidentDiagnostics(incidentId: string, options?: RequestOptions): Promise<IncidentDiagnosticsResponse>;
   listProjects(options?: RequestOptions): Promise<ProjectResponse[]>;
   getProject(projectId: string, options?: RequestOptions): Promise<ProjectResponse>;
@@ -128,6 +134,12 @@ export function createPulseApiClient(options: PulseApiClientOptions = {}): Pulse
   }
 
   return {
+    getOverview(requestOptions?: RequestOptions) {
+      return request<OverviewResponse>("/overview", requestOptions);
+    },
+    getServiceHealth(serviceId: string, requestOptions?: RequestOptions) {
+      return request<ServiceHealthResponse>("/services/" + encodeURIComponent(serviceId) + "/health", requestOptions);
+    },
     getIncidentDiagnostics(incidentId: string, requestOptions?: RequestOptions) {
       return request<IncidentDiagnosticsResponse>(
         "/incidents/" + encodeURIComponent(incidentId), requestOptions,

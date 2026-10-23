@@ -342,3 +342,35 @@ describe("createPulseApiClient", () => {
       .rejects.toEqual(new ApiError(502, "Request failed"));
   });
 });
+
+describe("M7 API reads", () => {
+  const serviceHealth: import("./client").ServiceHealthResponse = {
+    serviceId: service.id, state: "healthy",
+    monitors: { total: 3, enabled: 2, reporting: 1, healthy: 1, unhealthy: 0, unknown: 1, disabled: 1 },
+    coverage: { reporting: 1, enabled: 2 },
+  };
+  const overview: import("./client").OverviewResponse = {
+    totals: { projects: 2, services: 3, monitors: 4, enabledMonitors: 3, openIncidents: 1 },
+    serviceHealth: { healthy: 1, degraded: 0, down: 1, unknown: 1 }, attention: [],
+  };
+  it("gets the server-derived Overview and forwards cancellation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(overview)));
+    const signal = new AbortController().signal;
+    expect(await createPulseApiClient({ fetchImpl }).getOverview({ signal })).toEqual(overview);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/overview", expect.objectContaining({ signal }));
+  });
+  it("gets Service Health with an encoded ID and forwards cancellation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(serviceHealth)));
+    const signal = new AbortController().signal;
+    expect(await createPulseApiClient({ fetchImpl }).getServiceHealth("service/id", { signal })).toEqual(serviceHealth);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/services/service%2Fid/health", expect.objectContaining({ signal }));
+  });
+  it.each([400, 404, 500])("preserves Service Health HTTP %s error status", async status => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: "Service Health unavailable" }), { status, headers: { "content-type": "application/json" } }));
+    await expect(createPulseApiClient({ fetchImpl }).getServiceHealth(service.id)).rejects.toEqual(new ApiError(status, "Service Health unavailable"));
+  });
+  it("handles non-JSON Overview failures with the existing safe generic message", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("upstream detail", { status: 500 }));
+    await expect(createPulseApiClient({ fetchImpl }).getOverview()).rejects.toEqual(new ApiError(500, "Request failed"));
+  });
+});

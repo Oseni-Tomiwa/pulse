@@ -1,3 +1,4 @@
+import { emptyHealth, emptyOverview } from "../test/m7-fixtures";
 import { transferableAbortController } from "node:util";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -94,6 +95,8 @@ function deferred<T>() {
 
 function fakeClient(overrides: Partial<PulseApiClient> = {}): PulseApiClient {
   return {
+    getOverview: vi.fn().mockResolvedValue(emptyOverview),
+    getServiceHealth: vi.fn().mockImplementation(async (serviceId: string) => emptyHealth(serviceId)),
     listProjects: vi.fn().mockResolvedValue([]),
     getProject: vi.fn(),
     createProject: vi.fn(),

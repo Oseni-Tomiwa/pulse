@@ -9,6 +9,7 @@ import {
 import { EmptyState, ErrorState, LoadingState } from "../components/async-states";
 import { CreateMonitorForm } from "./create-monitor-form";
 import { PageHeader } from "./page-header";
+import { ServiceHealthPanel, ServiceMonitorCard } from "./service-health-panel";
 
 type ServiceState =
   | { status: "loading" }
@@ -29,6 +30,7 @@ export function ServiceDetailsPage({ apiClient }: { apiClient: PulseApiClient })
   const [serviceRequestVersion, setServiceRequestVersion] = useState(0);
   const [monitorsRequestVersion, setMonitorsRequestVersion] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [healthVersion, setHealthVersion] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -68,6 +70,7 @@ export function ServiceDetailsPage({ apiClient }: { apiClient: PulseApiClient })
   }, [apiClient, serviceId, serviceState.status, monitorsRequestVersion]);
 
   function addCreatedMonitor(monitor: MonitorResponse) {
+    setHealthVersion(version => version + 1);
     setMonitorsState((current) => current.status === "success"
       ? { status: "success", monitors: [monitor, ...current.monitors.filter(({ id }) => id !== monitor.id)] }
       : current);
@@ -89,21 +92,18 @@ export function ServiceDetailsPage({ apiClient }: { apiClient: PulseApiClient })
         <PageHeader eyebrow="Project / Service" title={serviceState.service.name} description={"Created " + new Date(serviceState.service.createdAt).toLocaleDateString()} />
         {monitorsState.status === "success" && !creating ? <button className="button" type="button" onClick={() => setCreating(true)}>Create Monitor</button> : null}
       </div>
-      <section className="details-section" aria-labelledby="monitors-heading">
-        <h2 id="monitors-heading">Monitors</h2>
+      <ServiceHealthPanel key={serviceState.service.id} apiClient={apiClient} serviceId={serviceState.service.id} refreshVersion={healthVersion} />
+      <section className="details-section observability-section m7-page" aria-labelledby="monitors-heading">
+        <div className="section-heading"><div><h2 id="monitors-heading">Monitors</h2><p>Latest persisted observation per enabled monitor</p></div></div>
         {monitorsState.status === "idle" || monitorsState.status === "loading" ? <LoadingState label="Loading monitors" /> : null}
         {monitorsState.status === "error" ? <ErrorState title="Monitors unavailable" description="Pulse could not load this Service's Monitors." onRetry={() => setMonitorsRequestVersion((version) => version + 1)} /> : null}
         {monitorsState.status === "success" ? (
           <>
             {creating && serviceId ? <CreateMonitorForm apiClient={apiClient} serviceId={serviceId} onCancel={() => setCreating(false)} onCreated={addCreatedMonitor} /> : null}
             {monitorsState.monitors.length === 0 ? <EmptyState title="No monitors yet" description="Create an HTTP Monitor for this Service." /> : (
-              <div className="monitor-grid">
+              <div className="m7-monitor-list">
                 {monitorsState.monitors.map((monitor) => (
-                  <Link className="monitor-card" to={"/monitors/" + monitor.id} key={monitor.id}>
-                    <strong>{monitor.name}</strong>
-                    <span>{monitor.method} {monitor.url}</span>
-                    <span>{monitor.enabled ? "Monitoring enabled" : "Monitoring disabled"}</span>
-                  </Link>
+                  <ServiceMonitorCard key={monitor.id} apiClient={apiClient} monitor={monitor} />
                 ))}
               </div>
             )}

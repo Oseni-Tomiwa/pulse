@@ -141,3 +141,64 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline
 :root[data-theme="dark"] .incident-diagnostics .state-unhealthy { color: #ffabab; }
 :root[data-theme="dark"] .incident-diagnostics .state-resolved,
 :root[data-theme="dark"] .incident-diagnostics .state-healthy { color: #8ee0b4; }
+
+/* M7 preserves the approved prototype hierarchy using Pulse's existing tokens. */
+.m7-page { --m7-good: #237a4c; --m7-bad: #aa2929; --m7-warn: #965509; }
+.m7-service-health { --m7-good: #237a4c; --m7-bad: #aa2929; --m7-warn: #965509; }
+.m7-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .85rem; padding: 0; margin: 0; list-style: none; }
+.m7-metric { min-width: 0; padding: 1.1rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
+.m7-metric dt, .m7-metric > span, .m7-metric small { color: var(--text-muted); font-size: .875rem; }
+.m7-metric dd, .m7-metric > strong { display: block; margin: .5rem 0 0; font-size: 1.75rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.m7-metric small { display: block; margin-top: .35rem; }
+.m7-overview-health { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1rem; }
+.m7-overview-health > section { min-width: 0; }
+.m7-health-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; margin: 1rem 0; }
+.m7-health-counts > div { min-width: 0; padding: .8rem; border: 1px solid var(--border); border-radius: .6rem; }
+.m7-health-counts dd { margin: .5rem 0 0; font-size: 1.4rem; font-weight: 750; }
+.m7-health-counts .m7-state { gap: .35rem; font-size: .75rem; }
+.m7-count-label, .m7-muted, .m7-coverage-text { color: var(--text-muted); font-size: .875rem; }
+.m7-count-label { flex-shrink: 0; }
+.m7-explanation, .m7-muted { line-height: 1.65; }
+.m7-note { margin-top: 1rem; line-height: 1.6; font-size: .875rem; }
+.m7-state { display: inline-flex; align-items: center; gap: .45rem; width: fit-content; color: var(--text-muted); font-size: .875rem; }
+.m7-state-dot { flex-shrink: 0; width: .55rem; height: .55rem; border-radius: 50%; background: currentColor; }
+.m7-state-healthy { color: var(--m7-good); }
+.m7-state-down, .m7-state-unhealthy { color: var(--m7-bad); }
+.m7-state-degraded { color: var(--m7-warn); }
+.m7-state-large { margin-top: .35rem; font-size: 1.6rem; }
+.m7-attention-list { padding: 0; margin: 0; list-style: none; }
+.m7-attention-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(5rem, auto) minmax(0, .85fr) auto; gap: 1rem; align-items: center; padding: 1rem .35rem; border-top: 1px solid var(--border); text-decoration: none; }
+.m7-attention-row:hover { background: var(--surface-muted); }
+.m7-attention-identity, .m7-monitor-identity { display: grid; gap: .35rem; min-width: 0; }
+.m7-attention-identity > span { color: var(--text-muted); font-size: .875rem; }
+.m7-attention-row, .m7-monitor-card, .m7-metric { overflow-wrap: anywhere; }
+.m7-service-hero { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; margin-bottom: .85rem; }
+.m7-service-hero h2 { margin-bottom: .35rem; color: var(--text-muted); font-size: .875rem; }
+.m7-coverage { display: grid; gap: .3rem; text-align: right; flex-shrink: 0; }
+.m7-coverage span { color: var(--text-muted); font-size: .875rem; }
+.m7-coverage strong { font-size: 1.6rem; }
+.m7-monitor-list { display: grid; gap: .75rem; }
+.m7-monitor-card { grid-template-columns: minmax(0, 1fr) auto; align-items: center; box-shadow: none; }
+.m7-monitor-card .m7-state { font-size: .875rem; }
+.m7-monitor-identity > strong { color: var(--text); font-size: 1rem; }
+.m7-disabled { color: var(--text-muted); font-size: .875rem; }
+:root[data-theme="dark"] .m7-page, :root[data-theme="dark"] .m7-service-health { --m7-good: #8ee0b4; --m7-bad: #ffabab; --m7-warn: #f5c478; }
+@media (max-width: 1000px) {
+  .m7-overview-health { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .m7-metrics, .m7-health-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .m7-service-hero { align-items: flex-start; flex-direction: column; }
+  .m7-coverage { text-align: left; }
+  .m7-attention-row { grid-template-columns: minmax(0, 1fr) auto; gap: .65rem; }
+  .m7-attention-identity { grid-column: 1 / -1; }
+  .m7-coverage-text { grid-column: 1 / -1; }
+  .m7-attention-row > span:last-child { display: none; }
+  .m7-monitor-card { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 400px) {
+  .m7-metrics, .m7-health-counts { grid-template-columns: minmax(0, 1fr); }
+}
+.m7-state .m7-state-dot { color: inherit; }
+.m7-attention-row > .m7-state, .m7-monitor-card > .m7-state { padding: .3rem .55rem; border-radius: 999px; background: color-mix(in srgb, currentColor 10%, var(--surface)); }
+.m7-disabled { padding: .3rem .55rem; border-radius: 999px; background: var(--surface-muted); }

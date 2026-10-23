@@ -18,7 +18,7 @@ function createRoutes(apiClient: PulseApiClient): RouteObject[] {
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: <OverviewPage /> },
+      { index: true, element: <OverviewPage apiClient={apiClient} /> },
       { path: "projects", element: <ProjectsPage apiClient={apiClient} /> },
       { path: "projects/:projectId", element: <ProjectDetailsPage apiClient={apiClient} /> },
       { path: "services/:serviceId", element: <ServiceDetailsPage apiClient={apiClient} /> },
