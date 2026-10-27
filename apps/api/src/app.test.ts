@@ -569,6 +569,7 @@ describe("monitoring read routes", () => {
     expect(response.json()).toEqual({
       monitorId: existing.id,
       probeStatus: "unknown",
+      freshness: { state: "no_observation", staleAt: null },
       latestCheck: null,
       openIncident: null,
     });

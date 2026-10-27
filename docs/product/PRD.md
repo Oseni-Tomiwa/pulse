@@ -57,10 +57,13 @@ Ad hoc scripts can send requests, but they rarely preserve consistent history, a
 - Database-free tests, guarded PostgreSQL integration tests, and a real lifecycle smoke test.
 - Production web workflows for listing and creating Projects, Services, and HTTP Monitors, with real detail views.
 - Monitor Details views for independent probe status, open-Incident state, check-based uptime, recent Health Checks, and Incident history.
+- Incident Details with bounded persisted HTTP evidence and explicit boundary uncertainty.
+- Service Health/Overview and current coverage derived from fresh enabled observations.
+- M8 backend observation freshness, preserving historical Healthy/Unhealthy outcomes.
 
 ### Planned for v0.1
 
-- Incident detail views with the HTTP evidence recorded around the failure.
+- M8 frontend Fresh/Stale presentation, relative observation age, latest observation evidence, and 15-second polling.
 - Richer latency-history presentation after its semantics and visual form are defined.
 - Documented deployment packaging, including the Docker Compose outcome named by the original design.
 - A complete fresh-machine setup and release verification path.
@@ -122,11 +125,9 @@ Check-based uptime is the proportion of persisted Health Checks that are healthy
 
 ### Dashboard expectations
 
-The Project, Service, and Monitor web workflows are implemented. Monitor Details exposes current probe evidence, open-Incident state, check-based uptime, and bounded check and Incident histories as independent resources. The backend now exposes bounded Incident diagnostics using persisted HTTP evidence, honest boundary uncertainty, and current Monitor thresholds; the Incident Details web experience remains a separate implementation pass. Remaining product views planned for v0.1 should expose:
+The Project, Service, and Monitor web workflows are implemented. Monitor Details exposes current probe evidence, open-Incident state, check-based uptime, and bounded check and Incident histories as independent resources. Incident Details exposes bounded persisted HTTP evidence, honest boundary uncertainty, and current Monitor thresholds. M7 Service Health and Overview web views are implemented. M8 backend logic now excludes stale observations from current health/coverage and includes Healthy Services with incomplete current coverage in attention. Freshness is derived from probe-start time plus current interval, timeout, and `max(15000ms, interval)` grace; equality at the deadline is Stale. HealthCheck configuration is not snapshotted historically.
 
-- Derived Service-level health when its aggregation semantics are defined.
-- Incident detail context around the recorded HTTP evidence through the approved frontend experience.
-- A richer latency-history presentation without inventing unavailable diagnostics.
+Remaining product work includes the M8 frontend pass (Fresh/Stale context, relative age, latest evidence and 15-second polling), richer latency-history presentation, deployment packaging, and release verification. The existing frontend still presents M7 semantics until that separate pass.
 
 ## Release criteria
 

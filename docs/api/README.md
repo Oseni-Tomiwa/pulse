@@ -1,6 +1,6 @@
 # HTTP API
 
-The Fastify API currently exposes health, Project, Service, and HTTP Monitor management, plus Monitor status, evidence history, and check-based uptime. It does not expose dashboard routes.
+The Fastify API currently exposes health, Project, Service, and HTTP Monitor management, plus Monitor status, evidence history, and check-based uptime. It also exposes Incident diagnostics, derived current Service Health, and the workspace Overview.
 
 Dates are serialized as ISO 8601 strings in JSON. Resource IDs are UUIDs.
 
@@ -340,12 +340,13 @@ Incident rows do not snapshot Monitor configuration. The `monitor` object and `t
 
 ### `GET /monitors/:monitorId/status`
 
-Returns latest probe state and open-Incident state as separate signals:
+Returns historical latest probe state, derived freshness, and open-Incident state as separate signals:
 
 ```json
 {
   "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
   "probeStatus": "healthy",
+  "freshness": { "state": "fresh", "staleAt": "2026-09-26T12:12:10.000Z" },
   "latestCheck": {
     "id": "42",
     "monitorId": "30e4a63a-cd17-4c64-b10a-9e70b468b66e",
@@ -400,11 +401,7 @@ Response `200`:
 - Invalid or repeated window: `400`, `{ "error": "window must be 24h, 7d, or 30d" }`
 - Unknown Monitor: `404`, `{ "error": "Monitor not found" }`
 
-## Planned v0.1 API
-
-The v0.1 product still needs higher-level Service status presentation. Its exact route shape is intentionally not specified yet.
-
-## Service Health and Overview (M7 backend)
+## Current Service Health and Overview (M7 + M8 backend)
 
 ### `GET /services/:serviceId/health`
 
@@ -424,21 +421,29 @@ health and zero counts.
     "healthy": 1,
     "unhealthy": 0,
     "unknown": 1,
-    "disabled": 1
+    "disabled": 1,
+    "stale": 0
   },
   "coverage": { "reporting": 1, "enabled": 2 }
 }
 ```
 
 Disabled Monitors contribute only to `total` and `disabled`. Each enabled Monitor
-is classified from its latest persisted HealthCheck, using the same
-`checkedAt DESC, id DESC` ordering as Monitor status (numeric bigint IDs).
-No check means unknown; a healthy/unhealthy check means healthy/unhealthy.
-`reporting` is healthy plus unhealthy. No enabled or reporting Monitors means
-unknown Service Health. Otherwise, reporting Monitors that are all healthy mean
-healthy; all unhealthy mean down; a mix means degraded. Unknown Monitors reduce
-coverage but do not independently degrade health. No historical averaging,
-staleness, or Incident lifecycle inference is applied.
+uses its latest persisted HealthCheck, ordered by `checkedAt DESC, id DESC`
+(numeric bigint IDs). Only fresh observations count toward `healthy`, `unhealthy`,
+and `reporting`. `unknown` counts enabled Monitors with no observation; `stale`
+counts enabled Monitors with an expired observation. M8 always emits `stale`;
+the shared type permits omission for compatibility with existing M7 consumers.
+
+`reporting = healthy + unhealthy` now means **current coverage**, not ever-observed
+coverage. `enabled = reporting + unknown + stale`. The existing
+`coverage.reporting` and `coverage.enabled` field names are retained.
+
+No enabled or fresh reporting Monitors means Unknown Service Health. Otherwise,
+all fresh outcomes healthy means Healthy; all unhealthy means Down; a mix means
+Degraded. Unknown/stale Monitors reduce current coverage without independently
+degrading health. A historical Healthy/Unhealthy observation is never rewritten.
+No historical averaging or Incident lifecycle inference is applied.
 
 ### `GET /overview`
 
@@ -446,18 +451,49 @@ Returns the shared `Overview` contract:
 
 - `totals`: projects, services, monitors, enabledMonitors, openIncidents.
 - `serviceHealth`: counts of healthy, degraded, down, and unknown Services.
-- `attention`: only down, degraded, and unknown Services. Each entry contains
+- `attention`: down, degraded, unknown, and Healthy Services with incomplete current coverage. Each entry contains
   `service: { id, name, projectId }`, `project: { id, name }`, and the same `health`
   payload returned by the Service Health endpoint.
 
-Attention is ordered down, degraded, then unknown. Ties use ascending Service
+Attention is ordered Down, Degraded, Unknown, then Healthy with incomplete current coverage. Ties use ascending Service
 name, then ascending Service ID with a locale-independent JavaScript string
-comparison. Healthy Services are excluded. Projects without Services and Services
+comparison. Fully covered Healthy Services are excluded. Incomplete coverage does not change a Healthy Service to Degraded. Projects without Services and Services
 without Monitors remain included in their respective totals. The open-Incident
 total includes all currently open Incidents, including those belonging to disabled
 Monitors; it does not determine Service Health.
 
 Overview reads counts and observations from one read-only repeatable-read
 snapshot. It is unpaginated. Unexpected failures use the sanitized `500` response.
-These endpoints do not persist health, modify schema, or provide M8 freshness/live
-semantics.
+These endpoints derive health and freshness without schema changes. One evaluation
+time is captured per request, and every Service/Monitor in an Overview uses that
+time alongside the existing database snapshot.
+
+## Observation freshness (M8 backend)
+
+The canonical pure helper derives:
+
+```text
+staleAt = checkedAt + intervalMs + timeoutMs + max(15_000ms, intervalMs)
+now < staleAt  => fresh
+now >= staleAt => stale
+```
+
+Monitor Status adds `freshness: { state, staleAt }`. State is `fresh`, `stale`,
+`no_observation`, or `excluded`. No observation and disabled exclusion have a null
+deadline. Disabled exclusion takes precedence, including when no check exists.
+The latest check and `probeStatus` remain historical and are returned even for a
+stale/disabled Monitor. Existing latency, HTTP status, errors and decimal-string
+check IDs remain intact. Interval/timeout/enabled configuration remains available
+from Monitor detail/list responses.
+
+`checkedAt` is the worker's JavaScript probe-start time, not completion or persistence
+time. Freshness uses the Monitor's **current** interval and timeout; HealthChecks
+do not snapshot configuration. The grace is an observation-age policy, not a worker
+scheduling guarantee. Sequential backlog, DB delays and clock skew can outlast it.
+Invalid dates, out-of-range configuration and unrepresentable deadlines fail rather
+than silently becoming Fresh; API failures retain sanitized error handling.
+
+Budget examples: 1s/10s => 26s; 30s/10s => 70s; 60s/10s => 130s;
+5m/10s => 10m10s. Latency measurement and historical uptime/diagnostics are unchanged.
+Frontend Fresh/Stale UI, relative-age timers and approved 15-second polling belong
+to the later frontend pass and are not implemented by this backend milestone.

@@ -1,18 +1,23 @@
 import type { Overview, ServiceHealth, ServiceHealthSummary } from "@pulse/contracts";
+import { deriveObservationFreshness } from "./observation-freshness.js";
 
 export type MonitorHealthObservation = {
   enabled: boolean;
   // null means no persisted HealthCheck, not an unhealthy outcome.
   latestHealthy: boolean | null;
+  checkedAt: Date | null;
+  intervalMs: number;
+  timeoutMs: number;
 };
 
 export function aggregateServiceHealth(
   serviceId: string,
   observations: readonly MonitorHealthObservation[],
+  now: Date,
 ): ServiceHealth {
-  const monitors: ServiceHealth["monitors"] = {
+  const monitors: ServiceHealth["monitors"] & { stale: number } = {
     total: observations.length, enabled: 0, reporting: 0,
-    healthy: 0, unhealthy: 0, unknown: 0, disabled: 0,
+    healthy: 0, unhealthy: 0, unknown: 0, disabled: 0, stale: 0,
   };
   for (const observation of observations) {
     if (!observation.enabled) {
@@ -20,7 +25,9 @@ export function aggregateServiceHealth(
       continue;
     }
     monitors.enabled += 1;
-    if (observation.latestHealthy === null) monitors.unknown += 1;
+    const freshness = deriveObservationFreshness(observation, observation.checkedAt, now);
+    if (freshness.state === "stale") monitors.stale += 1;
+    else if (observation.latestHealthy === null || freshness.state === "no_observation") monitors.unknown += 1;
     else if (observation.latestHealthy) monitors.healthy += 1;
     else monitors.unhealthy += 1;
   }
@@ -49,7 +56,9 @@ export function aggregateOverview(
     result.totals.monitors += entry.health.monitors.total;
     result.totals.enabledMonitors += entry.health.monitors.enabled;
     result.serviceHealth[entry.health.state] += 1;
-    if (entry.health.state !== "healthy") result.attention.push(entry);
+    if (entry.health.state !== "healthy" || entry.health.coverage.reporting < entry.health.coverage.enabled) {
+      result.attention.push(entry);
+    }
   }
   result.attention.sort((left, right) =>
     attentionPriority[left.health.state] - attentionPriority[right.health.state] ||

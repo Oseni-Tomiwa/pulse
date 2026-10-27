@@ -2,6 +2,19 @@ export type ServiceStatus = "healthy" | "unhealthy" | "unknown";
 
 export type MonitorStatus = "healthy" | "unhealthy" | "unknown";
 
+// Freshness never rewrites the health of a persisted observation.
+export type ObservationFreshness =
+  | { state: "fresh" | "stale"; staleAt: Date }
+  | { state: "no_observation" | "excluded"; staleAt: null };
+
+export type MonitorStatusSnapshot = {
+  monitorId: string;
+  probeStatus: MonitorStatus;
+  latestCheck: HealthCheck | null;
+  openIncident: Incident | null;
+  freshness: ObservationFreshness;
+};
+
 export type UptimeWindow = "24h" | "7d" | "30d";
 
 export type MonitorUptime = {
@@ -136,9 +149,13 @@ export type ServiceHealth = {
     reporting: number;
     healthy: number;
     unhealthy: number;
+    // Enabled Monitors with no observation. Stale evidence is counted separately.
     unknown: number;
     disabled: number;
+    // Always emitted by M8; optional for source compatibility with M7 consumers.
+    stale?: number;
   };
+  // reporting counts only enabled Monitors with fresh latest observations.
   coverage: { reporting: number; enabled: number };
 };
 

@@ -33,7 +33,19 @@ These suites verify:
 - Web routing, light and dark themes, accessible async states, the typed API-client boundary, Project/Service/Monitor management, and independent Monitor status, uptime, Health Check, and Incident states.
 - Sequential worker cycles, per-Monitor failure isolation, polling, configuration, and shutdown behavior.
 
-As of the Monitor observability web milestone, the repository contains 33 monitoring, 20 database, 100 API, 88 web, and 26 worker database-free tests: 267 total. These counts are a snapshot and will change as behavior is added.
+M8 database-free coverage includes fixed-time freshness budgets and exact stale
+boundaries, invalid/overflow dates, fresh-only Service aggregation, stale versus
+never-observed counts, current coverage, Healthy partial-coverage attention,
+deterministic ordering, real Drizzle SQL/row decoding with a fake transport,
+and Monitor Status freshness with preserved latency/HTTP/error evidence.
+
+No elapsed-time sleeps or PostgreSQL connection are needed for these tests. Run
+`pnpm --filter @pulse/database test` (which excludes every `*.integration.test.ts`)
+and `pnpm --filter @pulse/api test`. Build contracts before database and API so
+workspace consumers see current generated exports. Real PostgreSQL verification
+is a separate gate; existing M7 fixed-date gate fixtures need M8 clock/expectation
+adaptation before reuse. Frontend polling/presentation tests belong to the later
+frontend implementation pass.
 
 ## PostgreSQL integration tests
 

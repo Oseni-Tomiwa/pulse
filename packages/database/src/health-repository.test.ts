@@ -16,23 +16,24 @@ function fixture(options: { rows?: unknown[][]; projects?: string; incidents?: s
   const db = drizzle({ client: { query } as unknown as Pool });
   return { db, query };
 }
-// serviceId, serviceName, projectId, projectName, monitorId, enabled, latestHealthy
+const now = new Date("2026-10-27T12:02:10.000Z");
+// serviceId, serviceName, projectId, projectName, monitorId, enabled, latestHealthy, checkedAt, intervalMs, timeoutMs
 const row = (s: string, p: string, m: string | null, enabled: boolean | null, latest: boolean | null, name = s) =>
-  [s, name, p, "Project " + p, m, enabled, latest];
+  [s, name, p, "Project " + p, m, enabled, latest, latest === null ? null : "2026-10-27T12:02:00.000Z", 60_000, 10_000];
 
 describe("Service Health read repository", () => {
   it("retains an existing Service with no Monitors as unknown", async () => {
     const { db } = fixture({ rows: [row("s1", "p1", null, null, null)] });
-    expect(await database.createHealthRepository(db).getServiceHealth("s1")).toEqual({
-      serviceId: "s1", state: "unknown", monitors: { total: 0, enabled: 0, reporting: 0, healthy: 0, unhealthy: 0, unknown: 0, disabled: 0 }, coverage: { reporting: 0, enabled: 0 },
+    expect(await database.createHealthRepository(db, () => now).getServiceHealth("s1")).toEqual({
+      serviceId: "s1", state: "unknown", monitors: { total: 0, enabled: 0, reporting: 0, healthy: 0, unhealthy: 0, unknown: 0, disabled: 0, stale: 0 }, coverage: { reporting: 0, enabled: 0 },
     });
   });
   it("returns null when a Service is absent", async () => {
-    const { db } = fixture(); expect(await database.createHealthRepository(db).getServiceHealth("missing")).toBeNull();
+    const { db } = fixture(); expect(await database.createHealthRepository(db, () => now).getServiceHealth("missing")).toBeNull();
   });
   it("scopes reads to the requested Service and correlates latest checks to their Monitor", async () => {
     const { db, query } = fixture({ rows: [row("s1", "p1", "m1", true, false)] });
-    const health = await database.createHealthRepository(db).getServiceHealth("s1");
+    const health = await database.createHealthRepository(db, () => now).getServiceHealth("s1");
     expect(health).toMatchObject({ serviceId: "s1", state: "down" });
     const [config, params] = query.mock.calls[0]!;
     expect(config.text).toContain('where "services"."id" ='); expect(params).toContain("s1");
@@ -42,7 +43,7 @@ describe("Service Health read repository", () => {
   });
   it("uses the same latest timestamp and numeric bigint tie-break ordering as Monitor status", async () => {
     const { db, query } = fixture();
-    await database.createHealthRepository(db).getServiceHealth("s1");
+    await database.createHealthRepository(db, () => now).getServiceHealth("s1");
     await database.createMonitoringRepository(db).getRecentHealthChecks("m1", 1);
     for (const [config, params] of query.mock.calls) {
       expect(config.text).toContain('order by "health_checks"."checked_at" desc, "health_checks"."id" desc limit');
@@ -56,15 +57,15 @@ describe("Service Health read repository", () => {
       row("s2", "p2", "m3", true, false, "Down API"), row("s2", "p2", "m4", true, null, "Down API"),
       row("s3", "p2", null, null, null, "Empty API"),
     ] });
-    const result = await database.createHealthRepository(db).getOverview();
+    const result = await database.createHealthRepository(db, () => now).getOverview();
     expect(result.totals).toEqual({ projects: 4, services: 3, monitors: 4, enabledMonitors: 3, openIncidents: 3 });
     expect(result.serviceHealth).toEqual({ healthy: 1, degraded: 0, down: 1, unknown: 1 });
     expect(result.attention).toEqual([
       { service: { id: "s2", name: "Down API", projectId: "p2" }, project: { id: "p2", name: "Project p2" }, health: {
-        serviceId: "s2", state: "down", monitors: { total: 2, enabled: 2, reporting: 1, healthy: 0, unhealthy: 1, unknown: 1, disabled: 0 }, coverage: { reporting: 1, enabled: 2 },
+        serviceId: "s2", state: "down", monitors: { total: 2, enabled: 2, reporting: 1, healthy: 0, unhealthy: 1, unknown: 1, disabled: 0, stale: 0 }, coverage: { reporting: 1, enabled: 2 },
       } },
       { service: { id: "s3", name: "Empty API", projectId: "p2" }, project: { id: "p2", name: "Project p2" }, health: {
-        serviceId: "s3", state: "unknown", monitors: { total: 0, enabled: 0, reporting: 0, healthy: 0, unhealthy: 0, unknown: 0, disabled: 0 }, coverage: { reporting: 0, enabled: 0 },
+        serviceId: "s3", state: "unknown", monitors: { total: 0, enabled: 0, reporting: 0, healthy: 0, unhealthy: 0, unknown: 0, disabled: 0, stale: 0 }, coverage: { reporting: 0, enabled: 0 },
       } },
     ]);
     const incidentQuery = query.mock.calls.find(([config]) => config.text.includes('from "incidents"'))!;
@@ -73,18 +74,46 @@ describe("Service Health read repository", () => {
     expect(query.mock.calls[0]![0].text).toBe("begin isolation level repeatable read read only");
     expect(query.mock.calls.at(-1)![0].text).toBe("commit");
   });
+  it("uses one injected clock per read and current configuration to classify stale checks", async () => {
+    const stale = row("s1", "p1", "m1", true, false);
+    stale[7] = "2026-10-27T12:00:00.000Z";
+    const fresh = row("s1", "p1", "m2", true, true);
+    const { db, query } = fixture({ rows: [stale, fresh] });
+    const clock = vi.fn(() => now);
+    const repository = database.createHealthRepository(db, clock);
+    expect(await repository.getServiceHealth("s1")).toMatchObject({ state: "healthy",
+      coverage: { reporting: 1, enabled: 2 }, monitors: { healthy: 1, unhealthy: 0, stale: 1, unknown: 0 } });
+    expect(clock).toHaveBeenCalledTimes(1);
+    const overview = await repository.getOverview();
+    expect(clock).toHaveBeenCalledTimes(2);
+    expect(overview.serviceHealth).toEqual({ healthy: 1, degraded: 0, down: 0, unknown: 0 });
+    expect(overview.attention[0]?.health.coverage).toEqual({ reporting: 1, enabled: 2 });
+    const sql = query.mock.calls[0]![0].text;
+    expect(sql).toContain('"monitors"."interval_ms"');
+    expect(sql).toContain('"monitors"."timeout_ms"');
+    expect(sql).toContain('select "checked_at"');
+  });
+  it("uses an explicitly supplied request time without consulting the repository clock", async () => {
+    const { db } = fixture({ rows: [row("s", "p", "m", true, true)] });
+    const clock = vi.fn(() => new Date(0));
+    const repository = database.createHealthRepository(db, clock);
+    expect(await repository.getServiceHealth("s", new Date("2026-10-27T12:04:10.000Z")))
+      .toMatchObject({ state: "unknown", monitors: { stale: 1 } });
+    expect((await repository.getOverview(now)).serviceHealth.healthy).toBe(1);
+    expect(clock).not.toHaveBeenCalled();
+  });
   it("returns zero services even when projects with no services exist", async () => {
     const { db } = fixture({ projects: "2" });
-    expect(await database.createHealthRepository(db).getOverview()).toMatchObject({ totals: { projects: 2, services: 0, monitors: 0, enabledMonitors: 0, openIncidents: 0 }, attention: [] });
+    expect(await database.createHealthRepository(db, () => now).getOverview()).toMatchObject({ totals: { projects: 2, services: 0, monitors: 0, enabledMonitors: 0, openIncidents: 0 }, attention: [] });
   });
   it("propagates read errors and rolls back the Overview snapshot", async () => {
     const { db, query } = fixture({ fail: true });
-    await expect(database.createHealthRepository(db).getOverview()).rejects.toThrow();
+    await expect(database.createHealthRepository(db, () => now).getOverview()).rejects.toThrow();
     expect(query.mock.calls.at(-1)![0].text).toBe("rollback");
-    await expect(database.createHealthRepository(db).getServiceHealth("s1")).rejects.toThrow();
+    await expect(database.createHealthRepository(db, () => now).getServiceHealth("s1")).rejects.toThrow();
   });
   it("rejects overview counts that cannot be represented safely", async () => {
     const { db } = fixture({ projects: "9007199254740992" });
-    await expect(database.createHealthRepository(db).getOverview()).rejects.toThrow("safe integer");
+    await expect(database.createHealthRepository(db, () => now).getOverview()).rejects.toThrow("safe integer");
   });
 });

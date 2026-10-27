@@ -8,3 +8,4 @@ export * from "./project-repository.js";
 export * from "./service-repository.js";
 export * from "./service-health.js";
 export * from "./health-repository.js";
+export * from "./observation-freshness.js";

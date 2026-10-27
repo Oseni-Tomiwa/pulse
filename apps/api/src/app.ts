@@ -7,11 +7,12 @@ import type {
   Overview,
   ServiceHealth,
   MonitorStatus,
+  MonitorStatusSnapshot,
   Project,
   Service,
   UptimeWindow,
 } from "@pulse/contracts";
-import type { CreateMonitorInput } from "@pulse/database";
+import { deriveObservationFreshness, type CreateMonitorInput } from "@pulse/database";
 import Fastify, { type FastifyServerOptions } from "fastify";
 
 export type ProjectRepository = {
@@ -45,8 +46,8 @@ export type MonitoringReadRepository = {
 };
 
 export type HealthReadRepository = {
-  getServiceHealth(serviceId: string): Promise<ServiceHealth | null>;
-  getOverview(): Promise<Overview>;
+  getServiceHealth(serviceId: string, now: Date): Promise<ServiceHealth | null>;
+  getOverview(now: Date): Promise<Overview>;
 };
 
 export type AppRepositories = {
@@ -116,7 +117,7 @@ export function buildApp(
     service: "pulse-api",
   }));
 
-  app.get("/overview", async () => healthRepository.getOverview());
+  app.get("/overview", async () => healthRepository.getOverview(now()));
 
   app.get<{ Params: { serviceId: string } }>(
     "/services/:serviceId/health",
@@ -125,7 +126,7 @@ export function buildApp(
       if (!UUID_PATTERN.test(serviceId)) {
         return reply.status(400).send({ error: "Invalid service ID" });
       }
-      const health = await healthRepository.getServiceHealth(serviceId);
+      const health = await healthRepository.getServiceHealth(serviceId, now());
       if (!health) return reply.status(404).send({ error: "Service not found" });
       return health;
     },
@@ -440,7 +441,9 @@ export function buildApp(
       if (!UUID_PATTERN.test(monitorId)) {
         return reply.status(400).send({ error: "Invalid monitor ID" });
       }
-      if (!await monitorRepository.getMonitorById(monitorId)) {
+      const evaluatedAt = now();
+      const monitor = await monitorRepository.getMonitorById(monitorId);
+      if (!monitor) {
         return reply.status(404).send({ error: "Monitor not found" });
       }
 
@@ -453,7 +456,10 @@ export function buildApp(
         ? "unknown"
         : latestCheck.healthy ? "healthy" : "unhealthy";
 
-      return { monitorId, probeStatus, latestCheck, openIncident };
+      return {
+        monitorId, probeStatus, latestCheck, openIncident,
+        freshness: deriveObservationFreshness(monitor, latestCheck?.checkedAt ?? null, evaluatedAt),
+      } satisfies MonitorStatusSnapshot;
     },
   );
 
