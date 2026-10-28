@@ -4,6 +4,7 @@ import {
   type RouteObject,
 } from "react-router-dom";
 import { createPulseApiClient, type PulseApiClient } from "./api/client";
+import { LiveRefresh } from "./live/live-refresh";
 import { AppShell } from "./layout/app-shell";
 import { IncidentDetailsPage } from "./pages/incident-details-page";
 import { MonitorDetailsPage } from "./pages/monitor-details-page";
@@ -18,12 +19,12 @@ function createRoutes(apiClient: PulseApiClient): RouteObject[] {
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: <OverviewPage apiClient={apiClient} /> },
+      { index: true, element: <LiveRefresh><OverviewPage apiClient={apiClient} /></LiveRefresh> },
       { path: "projects", element: <ProjectsPage apiClient={apiClient} /> },
       { path: "projects/:projectId", element: <ProjectDetailsPage apiClient={apiClient} /> },
-      { path: "services/:serviceId", element: <ServiceDetailsPage apiClient={apiClient} /> },
+      { path: "services/:serviceId", element: <LiveRefresh><ServiceDetailsPage apiClient={apiClient} /></LiveRefresh> },
       { path: "incidents/:incidentId", element: <IncidentDetailsPage apiClient={apiClient} /> },
-      { path: "monitors/:monitorId", element: <MonitorDetailsPage apiClient={apiClient} /> },
+      { path: "monitors/:monitorId", element: <LiveRefresh><MonitorDetailsPage apiClient={apiClient} /></LiveRefresh> },
       { path: "*", element: <NotFoundPage /> },
     ],
   }];

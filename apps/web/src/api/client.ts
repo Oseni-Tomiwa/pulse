@@ -3,7 +3,7 @@ import type {
   HttpMonitor,
   Incident,
   IncidentDiagnostics,
-  MonitorStatus,
+  MonitorStatusSnapshot,
   MonitorUptime,
   Overview,
   ServiceHealth,
@@ -31,12 +31,7 @@ export type HealthCheckResponse = JsonResponse<HealthCheck>;
 export type IncidentResponse = JsonResponse<Incident>;
 export type IncidentDiagnosticsResponse = JsonResponse<IncidentDiagnostics>;
 export type MonitorUptimeResponse = JsonResponse<MonitorUptime>;
-export type MonitorStatusResponse = {
-  monitorId: string;
-  probeStatus: MonitorStatus;
-  latestCheck: HealthCheckResponse | null;
-  openIncident: IncidentResponse | null;
-};
+export type MonitorStatusResponse = JsonResponse<MonitorStatusSnapshot>;
 
 export type CreateProjectInput = {
   name: string;

@@ -1,19 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import type { UptimeWindow } from "@pulse/contracts";
 import type {
-  HealthCheckResponse,
-  IncidentResponse,
-  MonitorStatusResponse,
-  MonitorUptimeResponse,
   PulseApiClient,
 } from "../api/client";
+import { LatestObservation } from "../components/latest-observation";
+import { RefreshWarning, useLiveResource } from "../live/live-refresh";
 import { LoadingState } from "../components/async-states";
-
-type ResourceState<T> =
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "success"; data: T };
 
 function SectionError({ title, retryLabel, onRetry }: {
   title: string;
@@ -35,34 +28,21 @@ function formatDate(value: string) {
 }
 
 function StatusSection({ apiClient, monitorId }: { apiClient: PulseApiClient; monitorId: string }) {
-  const [state, setState] = useState<ResourceState<MonitorStatusResponse>>({ status: "loading" });
   const [requestVersion, setRequestVersion] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading" });
-    void apiClient.getMonitorStatus(monitorId, { signal: controller.signal }).then(
-      (data) => { if (!controller.signal.aborted) setState({ status: "success", data }); },
-      () => { if (!controller.signal.aborted) setState({ status: "error" }); },
-    );
-    return () => controller.abort();
-  }, [apiClient, monitorId, requestVersion]);
+  const load = useCallback((signal: AbortSignal) => apiClient.getMonitorStatus(monitorId, { signal }), [apiClient, monitorId]);
+  const state = useLiveResource(load, monitorId, requestVersion);
 
   return (
     <section className="observability-section" aria-labelledby="status-heading">
       <h2 id="status-heading">Current state</h2>
+      {state.status === "success" ? <RefreshWarning failed={state.refreshFailed} label="Current state" /> : null}
       {state.status === "loading" ? <LoadingState label="Loading status" /> : null}
       {state.status === "error" ? <SectionError title="Status unavailable" retryLabel="Retry status" onRetry={() => setRequestVersion((version) => version + 1)} /> : null}
       {state.status === "success" ? (
         <div className="status-grid">
           <article className="summary-card">
-            <span className="summary-label">Latest probe</span>
-            <strong className={"state-badge state-" + state.data.probeStatus}>
-              {state.data.probeStatus[0].toUpperCase() + state.data.probeStatus.slice(1)}
-            </strong>
-            {state.data.latestCheck ? (
-              <p>Checked {formatDate(state.data.latestCheck.checkedAt)} - {state.data.latestCheck.latencyMs.toLocaleString()} ms</p>
-            ) : <p>No Health Check evidence yet.</p>}
+            <span className="summary-label">Last observed probe status</span>
+            <LatestObservation status={state.data} />
           </article>
           <article className="summary-card">
             <span className="summary-label">Incident state</span>
@@ -86,20 +66,13 @@ function StatusSection({ apiClient, monitorId }: { apiClient: PulseApiClient; mo
 
 function UptimeSection({ apiClient, monitorId }: { apiClient: PulseApiClient; monitorId: string }) {
   const [window, setWindow] = useState<UptimeWindow>("24h");
-  const [state, setState] = useState<ResourceState<MonitorUptimeResponse>>({ status: "loading" });
   const [requestVersion, setRequestVersion] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading" });
-    void apiClient.getMonitorUptime(monitorId, window, { signal: controller.signal }).then(
-      (data) => {
-        if (!controller.signal.aborted && data.window === window) setState({ status: "success", data });
-      },
-      () => { if (!controller.signal.aborted) setState({ status: "error" }); },
-    );
-    return () => controller.abort();
-  }, [apiClient, monitorId, requestVersion, window]);
+  const load = useCallback(async (signal: AbortSignal) => {
+    const data = await apiClient.getMonitorUptime(monitorId, window, { signal });
+    if (data.window !== window) throw new Error("Unexpected uptime window");
+    return data;
+  }, [apiClient, monitorId, window]);
+  const state = useLiveResource(load, monitorId + window, requestVersion);
 
   return (
     <section className="observability-section" aria-labelledby="uptime-heading">
@@ -117,6 +90,7 @@ function UptimeSection({ apiClient, monitorId }: { apiClient: PulseApiClient; mo
         </div>
       </div>
       {state.status === "loading" ? <LoadingState label={"Loading " + window + " uptime"} /> : null}
+      {state.status === "success" ? <RefreshWarning failed={state.refreshFailed} label="Check-based uptime" /> : null}
       {state.status === "error" ? <SectionError title="Uptime unavailable" retryLabel="Retry uptime" onRetry={() => setRequestVersion((version) => version + 1)} /> : null}
       {state.status === "success" ? (
         <div className="uptime-card">
@@ -136,22 +110,14 @@ function UptimeSection({ apiClient, monitorId }: { apiClient: PulseApiClient; mo
 }
 
 function HealthChecksSection({ apiClient, monitorId }: { apiClient: PulseApiClient; monitorId: string }) {
-  const [state, setState] = useState<ResourceState<HealthCheckResponse[]>>({ status: "loading" });
   const [requestVersion, setRequestVersion] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading" });
-    void apiClient.listHealthChecks(monitorId, { signal: controller.signal }).then(
-      (data) => { if (!controller.signal.aborted) setState({ status: "success", data }); },
-      () => { if (!controller.signal.aborted) setState({ status: "error" }); },
-    );
-    return () => controller.abort();
-  }, [apiClient, monitorId, requestVersion]);
+  const load = useCallback((signal: AbortSignal) => apiClient.listHealthChecks(monitorId, { signal }), [apiClient, monitorId]);
+  const state = useLiveResource(load, monitorId, requestVersion);
 
   return (
     <section className="observability-section" aria-labelledby="checks-heading">
       <h2 id="checks-heading">Recent Health Checks</h2>
+      {state.status === "success" ? <RefreshWarning failed={state.refreshFailed} label="Recent Health Checks" /> : null}
       {state.status === "loading" ? <LoadingState label="Loading Health Checks" /> : null}
       {state.status === "error" ? <SectionError title="Health Checks unavailable" retryLabel="Retry Health Checks" onRetry={() => setRequestVersion((version) => version + 1)} /> : null}
       {state.status === "success" && state.data.length === 0 ? <p className="section-empty">No Health Checks yet.</p> : null}
@@ -180,22 +146,14 @@ function HealthChecksSection({ apiClient, monitorId }: { apiClient: PulseApiClie
 }
 
 function IncidentsSection({ apiClient, monitorId }: { apiClient: PulseApiClient; monitorId: string }) {
-  const [state, setState] = useState<ResourceState<IncidentResponse[]>>({ status: "loading" });
   const [requestVersion, setRequestVersion] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading" });
-    void apiClient.listIncidents(monitorId, { signal: controller.signal }).then(
-      (data) => { if (!controller.signal.aborted) setState({ status: "success", data }); },
-      () => { if (!controller.signal.aborted) setState({ status: "error" }); },
-    );
-    return () => controller.abort();
-  }, [apiClient, monitorId, requestVersion]);
+  const load = useCallback((signal: AbortSignal) => apiClient.listIncidents(monitorId, { signal }), [apiClient, monitorId]);
+  const state = useLiveResource(load, monitorId, requestVersion);
 
   return (
     <section className="observability-section" aria-labelledby="incidents-heading">
       <h2 id="incidents-heading">Incident history</h2>
+      {state.status === "success" ? <RefreshWarning failed={state.refreshFailed} label="Incident history" /> : null}
       {state.status === "loading" ? <LoadingState label="Loading incidents" /> : null}
       {state.status === "error" ? <SectionError title="Incidents unavailable" retryLabel="Retry incidents" onRetry={() => setRequestVersion((version) => version + 1)} /> : null}
       {state.status === "success" && state.data.length === 0 ? <p className="section-empty">No incidents yet.</p> : null}

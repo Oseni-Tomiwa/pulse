@@ -72,6 +72,7 @@ const resolvedIncident: IncidentResponse = {
 const status: MonitorStatusResponse = {
   monitorId: monitor.id,
   probeStatus: "healthy",
+  freshness: { state: "excluded", staleAt: null },
   latestCheck: healthyCheck,
   openIncident,
 };
@@ -186,11 +187,12 @@ describe("MonitorDetailsPage", () => {
       getMonitorStatus: vi.fn().mockResolvedValue({
         monitorId: monitor.id,
         probeStatus: "unknown",
+        freshness: { state: "no_observation", staleAt: null },
         latestCheck: null,
         openIncident: null,
       }),
     }));
-    expect(await screen.findByText("Unknown")).toBeInTheDocument();
+    expect(await screen.findByText("No observation")).toBeInTheDocument();
     expect(screen.getByText("No Health Check evidence yet.")).toBeInTheDocument();
     expect(screen.getByText("No open incident")).toBeInTheDocument();
   });

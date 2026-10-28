@@ -56,9 +56,9 @@ describe("M7 Overview", () => {
       expect(await screen.findByRole("heading", { level: 1, name: "Payments API" })).toBeInTheDocument(); view.unmount();
     } finally { vi.unstubAllGlobals(); }
   });
-  it("explains reporting health, unknown coverage, and the absence of staleness evaluation", async () => {
-    show(); await loaded(); expect(screen.getByText("Observed health across reporting enabled monitors")).toBeInTheDocument();
-    expect(screen.getByText(/Unknown monitors reduce reporting coverage/)).toBeInTheDocument(); expect(screen.getByText(/Observation staleness is not evaluated/)).toBeInTheDocument();
+  it("explains fresh-only health and current coverage without rewriting history", async () => {
+    show(); await loaded(); expect(screen.getByText("Current health uses fresh observations only")).toBeInTheDocument();
+    expect(screen.getByText(/Freshness is separate from health/)).toBeInTheDocument(); expect(screen.getByText(/Current coverage counts enabled monitors with fresh observations/)).toBeInTheDocument();
     expect(screen.queryByText("Critical Services")).not.toBeInTheDocument();
   });
   it("shows a positive empty attention state", async () => {

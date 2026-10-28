@@ -37,7 +37,7 @@ const apiClient: PulseApiClient = {
     enabled: true, createdAt: "2026-09-27T14:00:00.000Z",
   }),
   getMonitorStatus: async () => ({
-    monitorId: "789", probeStatus: "unknown", latestCheck: null, openIncident: null,
+    monitorId: "789", probeStatus: "unknown", freshness: { state: "no_observation", staleAt: null }, latestCheck: null, openIncident: null,
   }),
   getMonitorUptime: async (_monitorId, window) => ({
     monitorId: "789", window,

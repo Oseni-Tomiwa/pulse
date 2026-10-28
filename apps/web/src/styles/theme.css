@@ -25,3 +25,14 @@
   --focus: #9abaff;
   --shadow: 0 14px 38px rgb(0 0 0 / 30%);
 }
+
+:root {
+  --observation-good: #237a4c;
+  --observation-bad: #aa2929;
+  --observation-warn: #965509;
+}
+:root[data-theme="dark"] {
+  --observation-good: #8ee0b4;
+  --observation-bad: #ffabab;
+  --observation-warn: #f5c478;
+}

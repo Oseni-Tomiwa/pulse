@@ -1,79 +1,35 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ApiError,
   type MonitorResponse,
   type PulseApiClient,
-  type ServiceResponse,
 } from "../api/client";
+import { LiveRefreshStatus, RefreshWarning, useLiveResource } from "../live/live-refresh";
 import { EmptyState, ErrorState, LoadingState } from "../components/async-states";
 import { CreateMonitorForm } from "./create-monitor-form";
 import { PageHeader } from "./page-header";
 import { ServiceHealthPanel, ServiceMonitorCard } from "./service-health-panel";
 
-type ServiceState =
-  | { status: "loading" }
-  | { status: "notFound" }
-  | { status: "error" }
-  | { status: "success"; service: ServiceResponse };
-
-type MonitorsState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "success"; monitors: MonitorResponse[] };
-
 export function ServiceDetailsPage({ apiClient }: { apiClient: PulseApiClient }) {
   const { serviceId } = useParams();
-  const [serviceState, setServiceState] = useState<ServiceState>({ status: "loading" });
-  const [monitorsState, setMonitorsState] = useState<MonitorsState>({ status: "idle" });
   const [serviceRequestVersion, setServiceRequestVersion] = useState(0);
   const [monitorsRequestVersion, setMonitorsRequestVersion] = useState(0);
   const [creating, setCreating] = useState(false);
   const [healthVersion, setHealthVersion] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    if (!serviceId) {
-      setServiceState({ status: "notFound" });
-      return () => controller.abort();
-    }
-    setServiceState({ status: "loading" });
-    setMonitorsState({ status: "idle" });
-    setCreating(false);
-    void apiClient.getService(serviceId, { signal: controller.signal }).then(
-      (service) => {
-        if (!controller.signal.aborted) setServiceState({ status: "success", service });
-      },
-      (cause) => {
-        if (controller.signal.aborted) return;
-        setServiceState(cause instanceof ApiError && cause.status === 404 ? { status: "notFound" } : { status: "error" });
-      },
-    );
-    return () => controller.abort();
-  }, [apiClient, serviceId, serviceRequestVersion]);
-
-  useEffect(() => {
-    if (serviceState.status !== "success" || !serviceId) return;
-    const controller = new AbortController();
-    setMonitorsState({ status: "loading" });
-    setCreating(false);
-    void apiClient.listMonitors(serviceId, { signal: controller.signal }).then(
-      (monitors) => {
-        if (!controller.signal.aborted) setMonitorsState({ status: "success", monitors });
-      },
-      () => {
-        if (!controller.signal.aborted) setMonitorsState({ status: "error" });
-      },
-    );
-    return () => controller.abort();
-  }, [apiClient, serviceId, serviceState.status, monitorsRequestVersion]);
+  useEffect(() => { setCreating(false); }, [serviceId]);
+  const loadService = useCallback((signal: AbortSignal) => apiClient.getService(serviceId!, { signal }), [apiClient, serviceId]);
+  const serviceResource = useLiveResource(loadService, serviceId ?? "missing-service", serviceRequestVersion, !!serviceId);
+  const serviceState = serviceResource.status === "success" ? { status: "success" as const, service: serviceResource.data }
+    : serviceResource.status === "error" && serviceResource.cause instanceof ApiError && serviceResource.cause.status === 404
+      ? { status: "notFound" as const } : serviceResource;
+  const loadMonitors = useCallback((signal: AbortSignal) => apiClient.listMonitors(serviceId!, { signal }), [apiClient, serviceId]);
+  const monitorsResource = useLiveResource(loadMonitors, serviceId ?? "missing-service", monitorsRequestVersion, serviceState.status === "success");
+  const monitorsState = monitorsResource.status === "success" ? { status: "success" as const, monitors: monitorsResource.data } : monitorsResource;
 
   function addCreatedMonitor(monitor: MonitorResponse) {
     setHealthVersion(version => version + 1);
-    setMonitorsState((current) => current.status === "success"
-      ? { status: "success", monitors: [monitor, ...current.monitors.filter(({ id }) => id !== monitor.id)] }
-      : current);
+    monitorsResource.setData(monitors => [monitor, ...monitors.filter(({ id }) => id !== monitor.id)]);
     setCreating(false);
   }
 
@@ -87,6 +43,8 @@ export function ServiceDetailsPage({ apiClient }: { apiClient: PulseApiClient })
 
   return (
     <>
+      <LiveRefreshStatus />
+      {serviceResource.status === "success" ? <RefreshWarning failed={serviceResource.refreshFailed} label="Service" /> : null}
       <Link className="text-link hierarchy-link" to={"/projects/" + serviceState.service.projectId}>Back to Project</Link>
       <div className="page-toolbar">
         <PageHeader eyebrow="Project / Service" title={serviceState.service.name} description={"Created " + new Date(serviceState.service.createdAt).toLocaleDateString()} />
@@ -94,9 +52,10 @@ export function ServiceDetailsPage({ apiClient }: { apiClient: PulseApiClient })
       </div>
       <ServiceHealthPanel key={serviceState.service.id} apiClient={apiClient} serviceId={serviceState.service.id} refreshVersion={healthVersion} />
       <section className="details-section observability-section m7-page" aria-labelledby="monitors-heading">
-        <div className="section-heading"><div><h2 id="monitors-heading">Monitors</h2><p>Latest persisted observation per enabled monitor</p></div></div>
-        {monitorsState.status === "idle" || monitorsState.status === "loading" ? <LoadingState label="Loading monitors" /> : null}
+        <div className="section-heading"><div><h2 id="monitors-heading">Monitors</h2><p>Historical outcome and freshness are shown separately</p></div></div>
+        {monitorsState.status === "loading" ? <LoadingState label="Loading monitors" /> : null}
         {monitorsState.status === "error" ? <ErrorState title="Monitors unavailable" description="Pulse could not load this Service's Monitors." onRetry={() => setMonitorsRequestVersion((version) => version + 1)} /> : null}
+        {monitorsResource.status === "success" ? <RefreshWarning failed={monitorsResource.refreshFailed} label="Monitors" /> : null}
         {monitorsState.status === "success" ? (
           <>
             {creating && serviceId ? <CreateMonitorForm apiClient={apiClient} serviceId={serviceId} onCancel={() => setCreating(false)} onCreated={addCreatedMonitor} /> : null}

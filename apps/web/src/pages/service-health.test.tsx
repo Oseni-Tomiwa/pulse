@@ -16,7 +16,7 @@ function show(health = healthFixture(), options: { monitors?: MonitorResponse[];
       return Promise.resolve(new Response(JSON.stringify(options.error ? { error: "private health details" } : health), { status: options.error ? 500 : 200, headers: { "content-type": "application/json" } }));
     }
     const body = path.endsWith("/monitors") ? options.monitors ?? [] : path.endsWith("/status")
-      ? { monitorId: m7Monitor.id, probeStatus: "unknown", latestCheck: null, openIncident: null } : m7Service;
+      ? { monitorId: m7Monitor.id, probeStatus: "unknown", freshness: { state: "no_observation", staleAt: null }, latestCheck: null, openIncident: null } : m7Service;
     return Promise.resolve(new Response(JSON.stringify(body)));
   });
   const view = render(<ThemeProvider><RouterProvider router={createAppRouter([`/services/${m7Service.id}`], createPulseApiClient({ fetchImpl }))} /></ThemeProvider>);
@@ -29,7 +29,7 @@ describe("M7 Service Health presentation", () => {
     const region = await screen.findByRole("region", { name: "Service health" });
     expect(await within(region).findByText(state[0]!.toUpperCase() + state.slice(1), { exact: true, selector: "strong" })).toBeInTheDocument();
     const counts = within(region).getByRole("list", { name: "Monitor health counts" });
-    for (const [label, count] of [["Total monitors", 4], ["Healthy", data.monitors.healthy], ["Unhealthy", data.monitors.unhealthy], ["Unknown", data.monitors.unknown]] as const) {
+    for (const [label, count] of [["Total monitors", 4], ["Fresh observations", data.monitors.reporting], ["Stale observations", data.monitors.stale ?? 0], ["No observation", data.monitors.unknown]] as const) {
       const card = within(counts).getByText(label).closest("li")!; expect(card).toHaveTextContent(String(count));
     }
   });
@@ -48,7 +48,7 @@ describe("M7 Service Health presentation", () => {
     const disabled = { ...m7Monitor, id: "disabled-monitor", name: "Legacy Ping", enabled: false };
     const { fetchImpl } = show(healthFixture("unknown"), { monitors: [m7Monitor, disabled] });
     const unknown = await screen.findByRole("link", { name: /Production API/ });
-    expect(await within(unknown).findByText("Unknown")).toBeInTheDocument(); expect(unknown).toHaveAttribute("href", "/monitors/" + m7Monitor.id);
+    expect(await within(unknown).findByText("No observation")).toBeInTheDocument(); expect(unknown).toHaveAttribute("href", "/monitors/" + m7Monitor.id);
     const excluded = screen.getByRole("link", { name: /Legacy Ping/ }); expect(excluded).toHaveTextContent("Disabled · excluded"); expect(within(excluded).queryByText("Unknown")).not.toBeInTheDocument();
     expect(fetchImpl.mock.calls.some(([url]) => String(url).includes("disabled-monitor/status"))).toBe(false);
   });

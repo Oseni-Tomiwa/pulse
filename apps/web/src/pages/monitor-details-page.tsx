@@ -1,39 +1,19 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ApiError, type MonitorResponse, type PulseApiClient } from "../api/client";
+import { ApiError, type PulseApiClient } from "../api/client";
+import { LiveRefreshStatus, RefreshWarning, useLiveResource } from "../live/live-refresh";
 import { ErrorState, LoadingState } from "../components/async-states";
 import { MonitorObservability } from "./monitor-observability";
 import { PageHeader } from "./page-header";
 
-type MonitorState =
-  | { status: "loading" }
-  | { status: "notFound" }
-  | { status: "error" }
-  | { status: "success"; monitor: MonitorResponse };
-
 export function MonitorDetailsPage({ apiClient }: { apiClient: PulseApiClient }) {
   const { monitorId } = useParams();
-  const [state, setState] = useState<MonitorState>({ status: "loading" });
   const [requestVersion, setRequestVersion] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    if (!monitorId) {
-      setState({ status: "notFound" });
-      return () => controller.abort();
-    }
-    setState({ status: "loading" });
-    void apiClient.getMonitor(monitorId, { signal: controller.signal }).then(
-      (monitor) => {
-        if (!controller.signal.aborted) setState({ status: "success", monitor });
-      },
-      (cause) => {
-        if (controller.signal.aborted) return;
-        setState(cause instanceof ApiError && cause.status === 404 ? { status: "notFound" } : { status: "error" });
-      },
-    );
-    return () => controller.abort();
-  }, [apiClient, monitorId, requestVersion]);
+  const load = useCallback((signal: AbortSignal) => apiClient.getMonitor(monitorId!, { signal }), [apiClient, monitorId]);
+  const resource = useLiveResource(load, monitorId ?? "missing-monitor", requestVersion, !!monitorId);
+  const state = resource.status === "success" ? { status: "success" as const, monitor: resource.data }
+    : resource.status === "error" && resource.cause instanceof ApiError && resource.cause.status === 404
+      ? { status: "notFound" as const } : resource;
 
   if (state.status === "loading") return <LoadingState label="Loading monitor" />;
   if (state.status === "error") {
@@ -46,6 +26,8 @@ export function MonitorDetailsPage({ apiClient }: { apiClient: PulseApiClient })
   const { monitor } = state;
   return (
     <>
+      <LiveRefreshStatus />
+      {resource.status === "success" ? <RefreshWarning failed={resource.refreshFailed} label="Monitor" /> : null}
       <Link className="text-link hierarchy-link" to={"/services/" + monitor.serviceId}>Back to Service</Link>
       <PageHeader eyebrow="Project / Service / Monitor" title={monitor.name} description={"Created " + new Date(monitor.createdAt).toLocaleDateString()} />
       <dl className="configuration-list">
