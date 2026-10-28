@@ -15,19 +15,20 @@ let fixture: { projects: string[]; services: string[]; monitors: string[] };
 const base = Date.parse("2026-10-01T12:00:00.000Z");
 type Kind = "healthy" | "unhealthy" | "unknown" | "disabled";
 
-function requireM7TestDatabaseUrl(): string {
+function requireM8TestDatabaseUrl(): string {
   if (!process.env.TEST_DATABASE_URL) throw new Error("TEST_DATABASE_URL is required");
   if (process.env.DATABASE_URL !== undefined) throw new Error("DATABASE_URL must be absent");
   const url = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
   let database: string;
   try { database = decodeURIComponent(new URL(url).pathname.slice(1)); }
   catch { throw new Error("Test database URL parsing failed"); }
+  if (new URL(url).search) throw new Error("Test database URL parameters are forbidden");
   if (database !== "pulse_test") throw new Error("Test database must be exactly pulse_test");
   return url;
 }
 
 beforeAll(async () => {
-  ({ db, pool } = createDatabase(requireM7TestDatabaseUrl()));
+  ({ db, pool } = createDatabase(requireM8TestDatabaseUrl()));
   const result = await pool.query("select current_database() as database");
   expect(result.rows[0].database).toBe("pulse_test");
 });
@@ -36,7 +37,7 @@ beforeEach(() => { fixture = { projects: [], services: [], monitors: [] }; });
 afterEach(async () => {
   if (!db || !fixture) return;
   // Recheck the guard immediately before cleanup; never truncate shared tables.
-  requireM7TestDatabaseUrl();
+  requireM8TestDatabaseUrl();
   if (fixture.monitors.length) {
     await db.delete(healthChecks).where(inArray(healthChecks.monitorId, fixture.monitors));
     await db.delete(incidents).where(inArray(incidents.monitorId, fixture.monitors));
@@ -53,19 +54,19 @@ afterEach(async () => {
 });
 afterAll(async () => { await pool?.end(); });
 
-async function project(name = "M7 PostgreSQL gate Project") {
+async function project(name = "M8 PostgreSQL gate Project") {
   const id = randomUUID(); fixture.projects.push(id);
   await db.insert(projects).values({ id, name, createdAt: new Date(base) });
   return id;
 }
-async function service(projectId: string, name = "M7 PostgreSQL gate Service") {
+async function service(projectId: string, name = "M8 PostgreSQL gate Service") {
   const id = randomUUID(); fixture.services.push(id);
   await db.insert(services).values({ id, projectId, name, createdAt: new Date(base) });
   return id;
 }
 async function monitor(serviceId: string, kind: Kind) {
   const id = randomUUID(); fixture.monitors.push(id);
-  await db.insert(monitors).values({ id, serviceId, name: "M7 PostgreSQL gate Monitor", url: "https://example.invalid/m7", enabled: kind !== "disabled", createdAt: new Date(base) });
+  await db.insert(monitors).values({ id, serviceId, name: "M8 PostgreSQL gate Monitor", url: "https://example.invalid/m7", enabled: kind !== "disabled", createdAt: new Date(base) });
   // Disabled Monitors intentionally retain an unhealthy persisted observation.
   if (kind !== "unknown") await check(id, kind === "healthy", base);
   return id;
@@ -80,7 +81,7 @@ async function incident(monitorId: string, resolved: boolean) {
   return id;
 }
 
-describe("M7 Service Health against PostgreSQL", () => {
+describe("M8 Service Health against PostgreSQL", () => {
   it.each<{ name: string; kinds: Kind[]; state: string; counts: number[] }>([
     { name: "zero Monitors", kinds: [], state: "unknown", counts: [0,0,0,0,0,0,0] },
     { name: "disabled with persisted checks", kinds: ["disabled"], state: "unknown", counts: [1,0,0,0,0,0,1] },
@@ -100,12 +101,38 @@ describe("M7 Service Health against PostgreSQL", () => {
     const serviceId = await service(await project());
     for (const kind of kinds) await monitor(serviceId, kind);
     const [total, enabled, reporting, healthy, unhealthy, unknown, disabled] = counts;
-    expect(await createHealthRepository(db).getServiceHealth(serviceId)).toEqual({ serviceId, state,
-      monitors: { total, enabled, reporting, healthy, unhealthy, unknown, disabled }, coverage: { reporting, enabled } });
+    expect(await createHealthRepository(db, () => new Date(base + 1000)).getServiceHealth(serviceId)).toEqual({ serviceId, state,
+      monitors: { total, enabled, reporting, healthy, unhealthy, unknown, disabled, stale: 0 }, coverage: { reporting, enabled } });
+  });
+
+  it("expires observations exactly at the deadline while retaining persisted evidence", async () => {
+    const serviceId = await service(await project());
+    const id = await monitor(serviceId, "healthy");
+    const repository = createHealthRepository(db, () => new Date(base + 1000));
+    // Defaults: 60s interval + 10s timeout + 60s grace.
+    expect((await repository.getServiceHealth(serviceId, new Date(base + 129999)))?.monitors).toMatchObject({ reporting: 1, healthy: 1, stale: 0 });
+    expect(await repository.getServiceHealth(serviceId, new Date(base + 130000))).toMatchObject({ state: "unknown", monitors: { reporting: 0, healthy: 0, unknown: 0, stale: 1 }, coverage: { reporting: 0, enabled: 1 } });
+    const latest = (await createMonitoringRepository(db).getRecentHealthChecks(id, 1))[0]!;
+    expect(latest.healthy).toBe(true);
+    expect(latest.statusCode).toBe(204);
+    expect(latest.latencyMs).toBe(12);
+  });
+
+  it("includes healthy Services with stale or never-observed coverage in attention", async () => {
+    const serviceId = await service(await project());
+    await monitor(serviceId, "healthy");
+    const stale = await monitor(serviceId, "unknown");
+    await check(stale, false, base - 130000);
+    await monitor(serviceId, "unknown");
+    const repository = createHealthRepository(db, () => new Date(base + 1000));
+    const health = await repository.getServiceHealth(serviceId);
+    expect(health).toMatchObject({ state: "healthy", monitors: { total: 3, reporting: 1, healthy: 1, unhealthy: 0, unknown: 1, stale: 1 }, coverage: { reporting: 1, enabled: 3 } });
+    const overview = await repository.getOverview();
+    expect(overview.attention.find(entry => entry.service.id === serviceId)?.health).toEqual(health);
   });
 
   it("returns null for an absent Service", async () => {
-    expect(await createHealthRepository(db).getServiceHealth(randomUUID())).toBeNull();
+    expect(await createHealthRepository(db, () => new Date(base + 1000)).getServiceHealth(randomUUID())).toBeNull();
   });
 
   it("selects newest timestamps then numeric bigint IDs without unsafe number conversion", async () => {
@@ -114,7 +141,7 @@ describe("M7 Service Health against PostgreSQL", () => {
     const first = await check(monitorId, true, base + 1000);
     // A later insert with an older timestamp must not replace the latest observation.
     await check(monitorId, false, base);
-    const repository = createHealthRepository(db);
+    const repository = createHealthRepository(db, () => new Date(base + 1000));
     expect((await repository.getServiceHealth(serviceId))?.state).toBe("healthy");
     expect((await createMonitoringRepository(db).getRecentHealthChecks(monitorId, 1))[0]?.id).toBe(first);
     const second = await check(monitorId, false, base + 1000);
@@ -148,32 +175,32 @@ describe("M7 Service Health against PostgreSQL", () => {
     expect(lowerId.toString() > higherId.toString()).toBe(true);
     const latest = (await createMonitoringRepository(db).getRecentHealthChecks(monitorId, 1))[0]!;
     expect(latest.id).toBe(higherId.toString()); expect(latest.healthy).toBe(false);
-    expect((await createHealthRepository(db).getServiceHealth(serviceId))?.state).toBe("down");
+    expect((await createHealthRepository(db, () => new Date(base + 1000)).getServiceHealth(serviceId))?.state).toBe("down");
   });
 
   it("isolates Services/Projects and ignores checks on disabled Monitors", async () => {
-    const targetService = await service(await project("M7 gate Target Project"));
+    const targetService = await service(await project("M8 gate Target Project"));
     const disabled = await monitor(targetService, "disabled");
     const target = await monitor(targetService, "healthy");
-    const otherService = await service(await project("M7 gate Other Project"));
+    const otherService = await service(await project("M8 gate Other Project"));
     await monitor(otherService, "unhealthy");
     await check(disabled, false, base + 999000);
     await incident(target, false); // Open Incident does not override a healthy latest check.
-    expect(await createHealthRepository(db).getServiceHealth(targetService)).toMatchObject({ state: "healthy",
+    expect(await createHealthRepository(db, () => new Date(base + 1000)).getServiceHealth(targetService)).toMatchObject({ state: "healthy",
       monitors: { total: 2, enabled: 1, reporting: 1, healthy: 1, unhealthy: 0, unknown: 0, disabled: 1 } });
-    expect((await createHealthRepository(db).getServiceHealth(otherService))?.state).toBe("down");
+    expect((await createHealthRepository(db, () => new Date(base + 1000)).getServiceHealth(otherService))?.state).toBe("down");
   });
 });
 
-describe("M7 Overview against PostgreSQL", () => {
+describe("M8 Overview against PostgreSQL", () => {
   it("counts all resources, filters/orders attention, and preserves Project identities", async () => {
-    const repository = createHealthRepository(db);
+    const repository = createHealthRepository(db, () => new Date(base + 1000));
     const baseline = await repository.getOverview();
-    const p1 = await project("M7 gate Project One"); const p2 = await project("M7 gate Project Two");
-    await project("M7 gate Project Without Services");
-    const h = await service(p1, "M7 Healthy"); const g = await service(p1, "M7 Degraded");
-    const b = await service(p2, "M7 Beta"); const a1 = await service(p1, "M7 Alpha"); const a2 = await service(p2, "M7 Alpha");
-    const u = await service(p2, "M7 Unknown Empty");
+    const p1 = await project("M8 gate Project One"); const p2 = await project("M8 gate Project Two");
+    await project("M8 gate Project Without Services");
+    const h = await service(p1, "M8 Healthy"); const g = await service(p1, "M8 Degraded");
+    const b = await service(p2, "M8 Beta"); const a1 = await service(p1, "M8 Alpha"); const a2 = await service(p2, "M8 Alpha");
+    const u = await service(p2, "M8 Unknown Empty");
     const hm = await monitor(h, "healthy");
     const gm = await monitor(g, "healthy"); await monitor(g, "unhealthy");
     const bm = await monitor(b, "unhealthy"); const disabled = await monitor(b, "disabled");
@@ -192,8 +219,8 @@ describe("M7 Overview against PostgreSQL", () => {
     const ranks = result.attention.map(entry => priority[entry.health.state]);
     expect(ranks).toEqual([...ranks].sort((left,right) => left-right));
     for (const [id, projectId, projectName, name] of [
-      [a1,p1,"M7 gate Project One","M7 Alpha"], [a2,p2,"M7 gate Project Two","M7 Alpha"],
-      [b,p2,"M7 gate Project Two","M7 Beta"], [g,p1,"M7 gate Project One","M7 Degraded"], [u,p2,"M7 gate Project Two","M7 Unknown Empty"],
+      [a1,p1,"M8 gate Project One","M8 Alpha"], [a2,p2,"M8 gate Project Two","M8 Alpha"],
+      [b,p2,"M8 gate Project Two","M8 Beta"], [g,p1,"M8 gate Project One","M8 Degraded"], [u,p2,"M8 gate Project Two","M8 Unknown Empty"],
     ]) {
       const entry = owned.find(item => item.service.id === id)!;
       expect(entry.service).toEqual({ id, projectId, name });
@@ -205,7 +232,7 @@ describe("M7 Overview against PostgreSQL", () => {
 
   it("uses a real read-only repeatable-read snapshot across concurrent committed writes", async () => {
     const serviceId = await service(await project()); const monitorId = await monitor(serviceId, "healthy");
-    const repository = createHealthRepository(db);
+    const repository = createHealthRepository(db, () => new Date(base + 1000));
     const before = await repository.getOverview();
     const client = await pool!.connect();
     let injected = false;
@@ -222,7 +249,7 @@ describe("M7 Overview against PostgreSQL", () => {
             const isolation = await target.query("show transaction_isolation");
             const readOnly = await target.query("show transaction_read_only");
             settings.push([isolation.rows[0].transaction_isolation, readOnly.rows[0].transaction_read_only]);
-            await project("M7 gate Concurrent Project");
+            await project("M8 gate Concurrent Project");
             await check(monitorId, false, base + 1000);
             await incident(monitorId, false);
           }
@@ -231,7 +258,7 @@ describe("M7 Overview against PostgreSQL", () => {
       },
     }) as PoolClient;
     try {
-      const during = await createHealthRepository(drizzle({ client: intercepted }) as unknown as Database).getOverview();
+      const during = await createHealthRepository(drizzle({ client: intercepted }) as unknown as Database, () => new Date(base + 1000)).getOverview();
       expect(injected).toBe(true); expect(settings).toEqual([["repeatable read", "on"]]);
       expect(during).toEqual(before);
       const after = await repository.getOverview();
@@ -244,7 +271,7 @@ describe("M7 Overview against PostgreSQL", () => {
   });
 
   it("returns an empty Overview only when the shared test database is already empty", async context => {
-    const result = await createHealthRepository(db).getOverview();
+    const result = await createHealthRepository(db, () => new Date(base + 1000)).getOverview();
     if (result.totals.projects !== 0 || result.totals.services !== 0 || result.totals.monitors !== 0 || result.totals.openIncidents !== 0) {
       context.skip(); // Never delete unrelated data to manufacture an empty database.
       return;

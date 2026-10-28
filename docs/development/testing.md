@@ -18,9 +18,27 @@ Run:
 pnpm --filter @pulse/monitoring test
 pnpm --filter @pulse/database test
 pnpm --filter @pulse/api test
-pnpm --filter @pulse/web test
+NODE_OPTIONS=--no-experimental-webstorage pnpm --filter @pulse/web test
 pnpm --filter @pulse/worker test
 ```
+
+For the web suite, retain the M7 `NODE_OPTIONS=--no-experimental-webstorage`
+invocation above. With installed dependencies, the equivalent command from
+`apps/web` is `NODE_OPTIONS=--no-experimental-webstorage ./node_modules/.bin/vitest run`.
+Use the intended Node runtime consistently; this workspace's root and `apps/web`
+login shells have resolved different Node executables.
+
+If Vitest prints only `RUN`, check whether `require("jsdom")` can finish before
+changing test configuration. During the M8 diagnostic gate, macOS had evicted
+thousands of dependency files (`ls -lO` reported `dataless`). Loading jsdom and
+running TypeScript stalled on unavailable file contents. Reading the existing
+web dependency files brought their contents back locally; no package versions
+or lockfile changes were needed. Keep the dependency tree downloaded locally
+before running tests or builds. The webstorage flag alone did not resolve this
+file-availability problem. After hydration, the full existing suite passed
+143/143 on Node v24.22.1 with the flag; the isolated API-client suite also
+passed without the flag, confirming that the flag was not the repair for this
+startup hang.
 
 These suites verify:
 
